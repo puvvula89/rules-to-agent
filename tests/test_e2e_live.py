@@ -19,6 +19,7 @@ import asyncio
 import sys
 import os
 import logging
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -93,18 +94,22 @@ class AgentSession:
         final_text = ""
         tool_calls = []
 
-        async for event in self.runner.run_async(
-            user_id=self.user_id,
-            session_id=self.session_id,
-            new_message=message,
-        ):
-            # Collect tool call names for display
-            if getattr(event, "content", None) and getattr(event.content, "parts", None):
-                for part in event.content.parts:
-                    if hasattr(part, "function_call") and part.function_call:
-                        tool_calls.append(part.function_call.name)
-                    if hasattr(part, "text") and part.text:
-                        final_text += part.text
+        try:
+            async for event in self.runner.run_async(
+                user_id=self.user_id,
+                session_id=self.session_id,
+                new_message=message,
+            ):
+                if getattr(event, "content", None) and getattr(event.content, "parts", None):
+                    for part in event.content.parts:
+                        if hasattr(part, "function_call") and part.function_call:
+                            tool_calls.append(part.function_call.name)
+                        if hasattr(part, "text") and part.text:
+                            final_text += part.text
+        except Exception:
+            log.error(f"[ERROR] Exception during runner.run_async on turn: '{user_message}'")
+            log.error(traceback.format_exc())
+            raise
 
         if tool_calls:
             log.info(f"  [TOOLS] {' → '.join(tool_calls)}")
@@ -255,33 +260,30 @@ async def run_change_of_mind():
 
 import pytest
 
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Attach the call-phase report to the item so fixtures can read it."""
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
+
+
 @pytest.fixture(autouse=True)
 def log_test_boundaries(request):
-    """Log test name + PASSED/FAILED around every test in this module."""
+    """Log test name + PASSED/FAILED + full error around every test."""
     log.info(f"\n{'='*60}")
     log.info(f"TEST: {request.node.name}")
     log.info(f"{'='*60}")
     yield
-    outcome = "PASSED" if not request.session.testsfailed else "FAILED"
-    log.info(f"RESULT: {request.node.name} — {outcome}")
-    log.info(f"Log file: {LOG_FILE}")
-
-
-@pytest.fixture(autouse=True)
-def log_assertion_errors(request):
-    """Capture AssertionError details into the log."""
-    yield
     rep = getattr(request.node, "rep_call", None)
-    if rep and rep.failed:
-        log.error(f"\n[FAILURE] {request.node.name}")
-        log.error(rep.longreprtext if hasattr(rep, "longreprtext") else str(rep.longrepr))
-
-
-@pytest.hookimpl(tryfirst=True, hookwrapper=True)
-def pytest_runtest_makereport(item, call):
-    outcome = yield
-    rep = outcome.get_result()
-    setattr(item, f"rep_{rep.when}", rep)
+    if rep is None:
+        return
+    if rep.passed:
+        log.info(f"RESULT: {request.node.name} — PASSED")
+    else:
+        log.error(f"RESULT: {request.node.name} — FAILED")
+        log.error(f"\n[FAILURE DETAIL]\n{rep.longrepr}")
+    log.info(f"Log file: {LOG_FILE}")
 
 
 @pytest.mark.asyncio
