@@ -32,16 +32,21 @@ LOG_DIR = Path(__file__).parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOG_DIR / f"e2e_live_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
 
-_handlers = [
-    logging.FileHandler(LOG_FILE, encoding="utf-8"),
-    logging.StreamHandler(sys.stdout),
-]
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",
-    handlers=_handlers,
-)
-log = logging.getLogger("e2e")
+_fmt = logging.Formatter("%(message)s")
+
+_file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+_file_handler.setFormatter(_fmt)
+
+_stdout_handler = logging.StreamHandler(sys.stdout)
+_stdout_handler.setFormatter(_fmt)
+
+# Use a dedicated logger with propagate=False so pytest's log-capture
+# plugin doesn't swallow the records before they reach our file handler.
+log = logging.getLogger("e2e_live")
+log.setLevel(logging.INFO)
+log.propagate = False
+log.addHandler(_file_handler)
+log.addHandler(_stdout_handler)
 
 from google.adk import Runner
 from google.adk.sessions import InMemorySessionService
