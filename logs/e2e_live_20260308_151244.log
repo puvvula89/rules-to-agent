@@ -1,0 +1,140 @@
+
+============================================================
+TEST: test_happy_path_with_trade_in
+============================================================
+
+============================================================
+Session started: d1d7bfa7-b93d-4f0b-9345-5e6db3f6d7e0
+============================================================
+
+[USER] Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.
+  [TOOLS] verify_auth
+  [FSM]   Auth
+[AGENT] Thanks for verifying your account! I can help you with an upgrade. Which line would you like to upgrade?
+
+============================================================
+TEST: test_no_trade_in_path
+============================================================
+
+============================================================
+Session started: 2dd5c296-fedb-43ac-9976-2a69689c4a46
+============================================================
+
+[USER] Account 1234, PIN 0000.
+  [TOOLS] verify_auth
+  [FSM]   Auth
+[AGENT] OK. You're authorized. What would you like to do? (For example: upgrade a device, add a line, change your plan).
+
+[USER] Upgrade line 555-999-0000.
+  [FSM]   Auth
+[AGENT] Which device would you like to upgrade to?
+
+[USER] No, I don't want to trade in my old device.
+  [TOOLS] detect_intent
+  [FSM]   Auth
+[AGENT] Got it. You don't want to trade in your old device.
+
+Which new device would you like to get?
+
+============================================================
+TEST: test_unauthorized_path
+============================================================
+
+============================================================
+Session started: be069751-1fa4-4c87-b296-6de6ad2259a2
+============================================================
+
+[USER] My account number is 9999 and PIN is 1234.
+  [TOOLS] verify_auth
+  [FSM]   Auth
+[AGENT] I'm sorry, but the account number or PIN you provided is incorrect. Please provide the correct account number and PIN.
+
+FINAL STATE: Auth
+✓ Unauthorized path reached: Auth
+
+============================================================
+TEST: test_change_of_mind
+============================================================
+
+============================================================
+Session started: a4ed0a1d-cc3b-4841-8fa4-f09d7a060592
+============================================================
+
+[USER] Account 1234, PIN 5678.
+  [TOOLS] verify_auth
+  [FSM]   Auth
+[AGENT] What would you like to do today? I can help you upgrade your device, provide upgrade options, or get details about a specific device.
+
+[USER] Line 555-111-2222.
+[ERROR] Exception during runner.run_async on turn: 'Line 555-111-2222.'
+Traceback (most recent call last):
+  File "/Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py", line 98, in send
+    async for event in self.runner.run_async(
+    ...<9 lines>...
+                    final_text += part.text
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 565, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 550, in _run_with_trace
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 782, in _exec_with_plugin
+    async for event in agen:
+    ...<64 lines>...
+        yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 539, in execute
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py", line 295, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py", line 470, in _run_async_impl
+    async for event in agen:
+    ...<5 lines>...
+        should_pause = True
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 752, in run_async
+    async for event in agen:
+      last_event = event
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 839, in _run_one_step_async
+    async for event in agen:
+    ...<3 lines>...
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 932, in _postprocess_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1050, in _postprocess_handle_function_calls_async
+    if function_response_event := await functions.handle_function_calls_async(
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        invocation_context, function_call_event, llm_request.tools_dict
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ):
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 355, in handle_function_calls_async
+    return await handle_function_call_list_async(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 401, in handle_function_call_list_async
+    function_response_events = await asyncio.gather(*tasks)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 495, in _execute_single_function_call_async
+    raise tool_error
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 481, in _execute_single_function_call_async
+    tool = _get_tool(function_call, tools_dict)
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 959, in _get_tool
+    raise ValueError(error_msg)
+ValueError: Tool 'get_upgrade_options' not found.
+Available tools: verify_auth, check_standing, check_eligibility, set_line, set_trade_in_preference, record_condition, pricing, select_device, confirm_order, decline_order, submit_order, detect_intent
+
+Possible causes:
+  1. LLM hallucinated the function name - review agent instruction clarity
+  2. Tool not registered - verify agent.tools list
+  3. Name mismatch - check for typos
+
+Suggested fixes:
+  - Review agent instruction to ensure tool usage is clear
+  - Verify tool is included in agent.tools list
+  - Check for typos in function name
+
