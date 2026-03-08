@@ -1,0 +1,48 @@
+
+============================================================
+TEST: test_happy_path_with_trade_in
+============================================================
+
+============================================================
+Session started: 1040d45a-bace-4d6e-9876-801330b1eced
+============================================================
+
+[USER] Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.
+RESULT: test_happy_path_with_trade_in — FAILED
+Log file: /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/logs/e2e_live_20260308_145654.log
+
+============================================================
+TEST: test_no_trade_in_path
+============================================================
+
+============================================================
+Session started: 66f2282b-2a16-4510-91a6-89f1bcbcc83d
+============================================================
+
+[USER] Account 1234, PIN 0000.
+RESULT: test_no_trade_in_path — FAILED
+Log file: /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/logs/e2e_live_20260308_145654.log
+
+============================================================
+TEST: test_unauthorized_path
+============================================================
+
+============================================================
+Session started: 9f6d339a-1c87-44bd-87d4-57c602949121
+============================================================
+
+[USER] My account number is 9999 and PIN is 1234.
+RESULT: test_unauthorized_path — FAILED
+Log file: /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/logs/e2e_live_20260308_145654.log
+
+============================================================
+TEST: test_change_of_mind
+============================================================
+
+============================================================
+Session started: 139bbf9b-8a9e-454a-8717-10b2eb1f6495
+============================================================
+
+[USER] Account 1234, PIN 5678.
+RESULT: test_change_of_mind — FAILED
+Log file: /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/logs/e2e_live_20260308_145654.log
