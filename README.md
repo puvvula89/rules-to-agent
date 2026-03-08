@@ -118,6 +118,8 @@ FINAL FSM STATE: EndSuccess
 ✓ Happy path with trade-in PASSED
 ```
 
+**Logs** are written automatically to `logs/e2e_live_<timestamp>.log` for every run. Share this file when reporting failures.
+
 ---
 
 ## Project Structure

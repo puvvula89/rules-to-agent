@@ -28,3 +28,6 @@ poetry.toml
 
 # MacOS
 .DS_Store
+
+# Test logs
+logs/

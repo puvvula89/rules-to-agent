@@ -11,13 +11,37 @@ Prerequisites:
 Run:
   poetry run pytest tests/test_e2e_live.py -v -s
   poetry run python  tests/test_e2e_live.py        # standalone with full trace
+
+Logs are written to: logs/e2e_live_<timestamp>.log
 """
 
 import asyncio
 import sys
 import os
+import logging
+from datetime import datetime
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+# ---------------------------------------------------------------------------
+# Logging setup — writes to logs/e2e_live_<timestamp>.log AND stdout
+# ---------------------------------------------------------------------------
+
+LOG_DIR = Path(__file__).parent.parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / f"e2e_live_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+_handlers = [
+    logging.FileHandler(LOG_FILE, encoding="utf-8"),
+    logging.StreamHandler(sys.stdout),
+]
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    handlers=_handlers,
+)
+log = logging.getLogger("e2e")
 
 from google.adk import Runner
 from google.adk.sessions import InMemorySessionService
@@ -48,13 +72,13 @@ class AgentSession:
             user_id=self.user_id,
         )
         self.session_id = session.id
-        print(f"\n{'='*60}")
-        print(f"Session started: {self.session_id}")
-        print(f"{'='*60}")
+        log.info(f"\n{'='*60}")
+        log.info(f"Session started: {self.session_id}")
+        log.info(f"{'='*60}")
 
     async def send(self, user_message: str) -> str:
         """Send a user message and return the agent's text response."""
-        print(f"\n[USER] {user_message}")
+        log.info(f"\n[USER] {user_message}")
 
         message = types.Content(
             role="user",
@@ -78,11 +102,11 @@ class AgentSession:
                         final_text += part.text
 
         if tool_calls:
-            print(f"  [TOOLS] {' → '.join(tool_calls)}")
+            log.info(f"  [TOOLS] {' → '.join(tool_calls)}")
 
         fsm_state = self.fsm_state()
-        print(f"  [FSM]   {fsm_state}")
-        print(f"[AGENT] {final_text.strip()}")
+        log.info(f"  [FSM]   {fsm_state}")
+        log.info(f"[AGENT] {final_text.strip()}")
         return final_text.strip()
 
     def _get_session(self):
@@ -151,13 +175,13 @@ async def run_happy_path_with_trade_in():
     if session.fsm_state() != "EndSuccess":
         response = await session.send("Yes please submit the order.")
 
-    print(f"\n{'='*60}")
-    print(f"FINAL FSM STATE: {session.fsm_state()}")
-    print(f"LEDGER: {session.ledger()}")
-    print(f"{'='*60}")
+    log.info(f"\n{'='*60}")
+    log.info(f"FINAL FSM STATE: {session.fsm_state()}")
+    log.info(f"LEDGER: {session.ledger()}")
+    log.info(f"{'='*60}")
 
     assert session.fsm_state() == "EndSuccess", f"Expected EndSuccess, got {session.fsm_state()}"
-    print("\n✓ Happy path with trade-in PASSED")
+    log.info("\n✓ Happy path with trade-in PASSED")
 
 
 async def run_no_trade_in_path():
@@ -180,9 +204,9 @@ async def run_no_trade_in_path():
     if session.fsm_state() != "EndSuccess":
         await session.send("Submit it please.")
 
-    print(f"\nFINAL STATE: {session.fsm_state()}")
+    log.info(f"\nFINAL STATE: {session.fsm_state()}")
     assert session.fsm_state() == "EndSuccess", f"Expected EndSuccess, got {session.fsm_state()}"
-    print("✓ No trade-in path PASSED")
+    log.info("✓ No trade-in path PASSED")
 
 
 async def run_unauthorized_path():
@@ -194,10 +218,10 @@ async def run_unauthorized_path():
 
     await session.send("My account number is 9999 and PIN is 1234.")
 
-    print(f"\nFINAL STATE: {session.fsm_state()}")
+    log.info(f"\nFINAL STATE: {session.fsm_state()}")
     assert session.fsm_state() in ("EndUnauthorized", "AccountStandingCheck", "Auth"), \
         f"Unexpected state: {session.fsm_state()}"
-    print(f"✓ Unauthorized path reached: {session.fsm_state()}")
+    log.info(f"✓ Unauthorized path reached: {session.fsm_state()}")
 
 
 async def run_change_of_mind():
@@ -214,10 +238,10 @@ async def run_change_of_mind():
     await session.send("Actually wait, I changed my mind. I want a different device.")
 
     state = session.fsm_state()
-    print(f"\nAfter change of mind: {state}")
+    log.info(f"\nAfter change of mind: {state}")
     assert state in ("NewUpgradeDeviceSelection", "NewUpgradeDevicePricing", "FinalPricing"), \
         f"Expected rewind, got {state}"
-    print(f"✓ Change of mind handled: {state}")
+    log.info(f"✓ Change of mind handled: {state}")
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +249,35 @@ async def run_change_of_mind():
 # ---------------------------------------------------------------------------
 
 import pytest
+
+@pytest.fixture(autouse=True)
+def log_test_boundaries(request):
+    """Log test name + PASSED/FAILED around every test in this module."""
+    log.info(f"\n{'='*60}")
+    log.info(f"TEST: {request.node.name}")
+    log.info(f"{'='*60}")
+    yield
+    outcome = "PASSED" if not request.session.testsfailed else "FAILED"
+    log.info(f"RESULT: {request.node.name} — {outcome}")
+    log.info(f"Log file: {LOG_FILE}")
+
+
+@pytest.fixture(autouse=True)
+def log_assertion_errors(request):
+    """Capture AssertionError details into the log."""
+    yield
+    rep = getattr(request.node, "rep_call", None)
+    if rep and rep.failed:
+        log.error(f"\n[FAILURE] {request.node.name}")
+        log.error(rep.longreprtext if hasattr(rep, "longreprtext") else str(rep.longrepr))
+
+
+@pytest.hookimpl(tryfirst=True, hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    rep = outcome.get_result()
+    setattr(item, f"rep_{rep.when}", rep)
+
 
 @pytest.mark.asyncio
 @pytest.mark.live
@@ -262,9 +315,9 @@ if __name__ == "__main__":
         "4": ("Change of mind",        run_change_of_mind),
     }
 
-    print("Select scenario:")
+    log.info("Select scenario:")
     for key, (name, _) in scenarios.items():
-        print(f"  {key}. {name}")
+        log.info(f"  {key}. {name}")
     choice = input("Choice [1]: ").strip() or "1"
 
     _, fn = scenarios.get(choice, scenarios["1"])
