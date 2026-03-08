@@ -6,6 +6,7 @@ from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
 from google.adk.tools.base_tool import BaseTool
+from google.adk.tools.tool_context import ToolContext
 
 from orchestrator.fsm import WorkflowFSM
 
@@ -102,7 +103,7 @@ def before_model(
 def after_tool(
     tool: BaseTool,
     args: dict,
-    callback_context: CallbackContext,
+    tool_context: ToolContext,
     tool_response: dict,
 ):
     # Parse tool_response safely — ADK may deliver dict, list[TextContent], or str
@@ -119,16 +120,16 @@ def after_tool(
         print(f"[Hook Warning] Could not parse tool result: {e}, type: {type(tool_response)}")
         result_data = {}
 
-    ledger = callback_context.state.get("ledger", _empty_ledger())
-    current_state = callback_context.state.get("fsm_state", fsm.initial_state)
+    ledger = tool_context.state.get("ledger", _empty_ledger())
+    current_state = tool_context.state.get("fsm_state", fsm.initial_state)
 
     # detect_intent: global FSM transition (wipes ledger keys in-place), early return
     if tool.name == "detect_intent":
         intent = result_data.get("detected_intent", "")
         if intent:
             new_state = fsm.evaluate(current_state, ledger, intent_override=intent)
-            callback_context.state["fsm_state"] = new_state
-            callback_context.state["ledger"] = ledger  # ledger may have been wiped
+            tool_context.state["fsm_state"] = new_state
+            tool_context.state["ledger"] = ledger  # ledger may have been wiped
         return tool_response
 
     # Determine ledger context key
@@ -141,9 +142,9 @@ def after_tool(
         ledger.setdefault(context_key, {}).update(result_data)
         print(f"[Ledger] Updated {context_key}: {ledger[context_key]}")
 
-    callback_context.state["ledger"] = ledger
+    tool_context.state["ledger"] = ledger
     new_state = fsm.evaluate(current_state, ledger)
-    callback_context.state["fsm_state"] = new_state
+    tool_context.state["fsm_state"] = new_state
 
     return tool_response
 
