@@ -1,156 +1,172 @@
-from google.adk import Agent
-from google.adk.tools import McpToolset
-from mcp import StdioServerParameters
 import os
-from typing import Optional, Dict, Any, List
-
-
-from orchestrator.session import SessionManager
-from orchestrator.fsm import WorkflowFSM
-from tools.mcp_client import MCPClient
 import json
-from google.genai import Client
-from google.adk.models import Gemini
 
-class ManagerAgent:
-    """
-    Tier 1: The Orchestrator (Single-Agent ADK Architecture)
-    Handles user interaction and slot filling, heavily guarded by ADK hooks
-    to filter tools strictly based on the FSM current state.
-    """
-    def __init__(self, session_manager: SessionManager, fsm: WorkflowFSM):
-        self.session_manager = session_manager
-        self.fsm = fsm
-        
-        # Instantiate McpToolset using connection_params. 
-        # ADK natively handles the AnyIO TaskGroup/ClientSession lifecycle internally.
-        server_path = os.path.abspath("mock_mcp_server/server.py")
-        self.mcp_toolset = McpToolset(
-            connection_params=StdioServerParameters(
-                command="python",
-                args=[server_path]
-            )
-        )
-        
-        def before_model(*args, **kwargs):
-            callback_context = kwargs.get("callback_context") or (args[0] if len(args) > 0 else None)
-            llm_request = kwargs.get("llm_request") or (args[1] if len(args) > 1 else None)
-            
-            session_id = getattr(callback_context.session, "session_id", "default") if getattr(callback_context, "session", None) else "default"
-            session = self.session_manager.get_session(session_id)
-            current_state = session.current_state
-            
-            allowed_tools = []
-            if current_state == "Auth": allowed_tools = ["verify_auth"]
-            elif current_state == "AccountStandingCheck": allowed_tools = ["check_standing"]
-            elif current_state == "LineToUpgrade": allowed_tools = ["set_line"]
-            elif current_state == "CheckLineUpgradeEligibility": allowed_tools = ["check_eligibility"]
-            elif current_state in ["TradeInPricing", "NewUpgradeDevicePricing"]: allowed_tools = ["pricing"]
-            elif current_state == "ProcessOrder": allowed_tools = ["submit_order"]
-            
-            if llm_request.config and llm_request.config.tools:
-                for t in llm_request.config.tools:
-                    if getattr(t, "function_declarations", None):
-                        t.function_declarations = [f for f in t.function_declarations if f.name in allowed_tools]
+from google.adk import Agent
+from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
+from google.adk.agents.callback_context import CallbackContext
+from google.adk.models.llm_request import LlmRequest
+from google.adk.tools.base_tool import BaseTool
 
-            objective = self.fsm.get_current_objective(session_id)
-            dynamic_instruction = f'''CRITICAL RULES (FSM Guardrail):
-Your CURRENT OBJECTIVE is strictly defined by the backend state machine:
-"{objective}"
+from orchestrator.fsm import WorkflowFSM
 
-1. Do NOT decide what to do next. Only collect the data required by the tool provided to you.
-2. If you have the data, call the explicit tool provided.
-3. If the user changes their mind, call `global_trigger(intent)`.
-'''         
-            if llm_request.config:
-                llm_request.config.system_instruction = dynamic_instruction
-                
-            # Returning None tells ADK to proceed with the Vertex call
-            return None
+# ---------------------------------------------------------------------------
+# Module-level constants (not re-created per LLM call)
+# ---------------------------------------------------------------------------
 
-        def after_tool(*args, **kwargs):
-            tool = kwargs.get("tool") or (args[0] if len(args) > 0 else None)
-            context = kwargs.get("callback_context") or kwargs.get("context") or (args[2] if len(args) > 2 else None)
-            tool_result = kwargs.get("tool_result") or (args[3] if len(args) > 3 else None)
-            
-            session_id = getattr(context.session, "session_id", "default") if getattr(context, "session", None) else "default"
-            session = self.session_manager.get_session(session_id)
-            
-            try:
-                # The MCP tool result might be a list of TextContent objects
-                if isinstance(tool_result, list) and len(tool_result) > 0:
-                    first_item = tool_result[0]
-                    if hasattr(first_item, "text"):
-                        # Extract the text and parse that as JSON
-                        result_data = json.loads(first_item.text)
-                    else:
-                        result_data = tool_result
-                elif isinstance(tool_result, str):
-                    result_data = json.loads(tool_result)
-                else:
-                    result_data = tool_result
-            except Exception as e:
-                print(f"  [Hook Warning] Could not parse tool result as JSON: {e}, type: {type(tool_result)}")
-                return tool_result
-                
-            mapping = {
-                "verify_auth": "account_context",
-                "check_standing": "account_context",
-                "set_line": "line_context",
-                "check_eligibility": "line_context",
-                "pricing": "trade_in_context" if isinstance(result_data, dict) and "quote_value" in result_data else "new_device_context",
-                "submit_order": "order_context"
-            }
-            
-            context_key = mapping.get(tool.name)
-            if context_key and isinstance(result_data, dict):
-                getattr(session.ledger, context_key).update(result_data)
-                print(f"[Ledger] Updated {context_key}: {getattr(session.ledger, context_key)}")
-                
-            self.session_manager.save_session(session)
-            old_state = session.current_state
-            new_state, new_objective = self.fsm.evaluate(session_id)
-            if old_state != new_state:
-                print(f"[FSM] Advancing {old_state} -> {new_state}")
-                
-            return tool_result
+STATE_TOOLS = {
+    "Auth":                        ["verify_auth"],
+    "AccountStandingCheck":        ["check_standing"],
+    "LineToUpgrade":               ["set_line"],
+    "CheckLineUpgradeEligibility": ["check_eligibility"],
+    "VerifyTradeIn":               ["set_trade_in_preference"],
+    "DeviceTradeInChecks":         ["record_condition"],
+    "TradeInPricing":              ["pricing"],
+    "NewUpgradeDeviceSelection":   ["select_device"],
+    "NewUpgradeDevicePricing":     ["pricing"],
+    "FinalPricing":                ["confirm_order", "decline_order"],
+    "ProcessOrder":                ["submit_order"],
+}
 
-        self.agent = Agent(
-            name="TelcoManager",
-            model=Gemini(
-                name="gemini-2.5-pro",
-                api_client=Client(
-                    vertexai=True, 
-                    project="tmeg-working-demos", 
-                    location="us-central1"
-                )
-            ),
-            instruction="You are a helpful Telco Customer Service AI.",
-            tools=[self.mcp_toolset],
-            before_model_callback=[before_model],
-            after_tool_callback=[after_tool]
-        )
-                
-    async def handle_turn(self, session_id: str, user_input: str) -> str:
-        """Entrypoint for the CLI/API wrapper to talk to the ADK agent."""
-        from google.adk import Runner
-        from google.genai import types
-        from google.adk.sessions import InMemorySessionService
-        
-        runner = Runner(
-            app_name="telco_poc",
-            agent=self.agent, 
-            session_service=InMemorySessionService(),
-            auto_create_session=True
-        )
-        message = types.Content(role="user", parts=[types.Part.from_text(text=user_input)])
-        
-        final_text = ""
-        # Runner manages the MCP connection cleanly across turns
-        async for event in runner.run_async(user_id="user_1", session_id=session_id, new_message=message):
-             if getattr(event, "content", None) and getattr(event.content, "parts", None):
-                 for part in event.content.parts:
-                     if hasattr(part, "text") and part.text:
-                          final_text += part.text
-                          
-        return final_text
+GLOBAL_INTENT_STATES = set(STATE_TOOLS.keys()) - {"Auth", "AccountStandingCheck"}
+
+TOOL_LEDGER_MAP = {
+    "verify_auth":             "account_context",
+    "check_standing":          "account_context",
+    "set_line":                "line_context",
+    "check_eligibility":       "line_context",
+    "set_trade_in_preference": "trade_in_context",
+    "record_condition":        "trade_in_context",
+    "pricing":                 None,   # determined by current FSM state
+    "select_device":           "new_device_context",
+    "confirm_order":           "order_context",
+    "decline_order":           "order_context",
+    "submit_order":            "order_context",
+    "detect_intent":           None,   # triggers global FSM transition
+}
+
+
+def _empty_ledger() -> dict:
+    return {
+        "account_context": {},
+        "line_context": {},
+        "trade_in_context": {},
+        "new_device_context": {},
+        "order_context": {},
+    }
+
+
+# ---------------------------------------------------------------------------
+# FSM (stateless — reads/writes via callback_context.state)
+# ---------------------------------------------------------------------------
+
+fsm = WorkflowFSM(os.path.abspath("config/phone_upgrade.yaml"))
+
+
+# ---------------------------------------------------------------------------
+# Callbacks
+# ---------------------------------------------------------------------------
+
+def before_model(
+    callback_context: CallbackContext,
+    llm_request: LlmRequest,
+):
+    current_state = callback_context.state.get("fsm_state", fsm.initial_state)
+
+    allowed_tools = list(STATE_TOOLS.get(current_state, []))
+    if current_state in GLOBAL_INTENT_STATES:
+        allowed_tools = allowed_tools + ["detect_intent"]
+
+    if llm_request.config and llm_request.config.tools:
+        for t in llm_request.config.tools:
+            if getattr(t, "function_declarations", None):
+                t.function_declarations = [
+                    f for f in t.function_declarations if f.name in allowed_tools
+                ]
+
+    objective = fsm.get_objective(current_state)
+    dynamic_instruction = (
+        f'CRITICAL RULES (FSM Guardrail):\n'
+        f'Your CURRENT OBJECTIVE is strictly defined by the backend state machine:\n'
+        f'"{objective}"\n\n'
+        f'1. Do NOT decide what to do next. Only collect the data required by the tool provided to you.\n'
+        f'2. If you have the data, call the explicit tool provided.\n'
+        f'3. If the user changes their mind about a previous choice, call '
+        f'detect_intent(intent) with one of: change_line, change_trade_in_device, change_new_device.'
+    )
+    if llm_request.config:
+        llm_request.config.system_instruction = dynamic_instruction
+
+    return None
+
+
+def after_tool(
+    tool: BaseTool,
+    args: dict,
+    callback_context: CallbackContext,
+    tool_response: dict,
+):
+    # Parse tool_response safely — ADK may deliver dict, list[TextContent], or str
+    try:
+        if isinstance(tool_response, dict):
+            result_data = tool_response
+        elif isinstance(tool_response, list):
+            result_data = json.loads(tool_response[0].text)
+        elif isinstance(tool_response, str):
+            result_data = json.loads(tool_response)
+        else:
+            result_data = {}
+    except Exception as e:
+        print(f"[Hook Warning] Could not parse tool result: {e}, type: {type(tool_response)}")
+        result_data = {}
+
+    ledger = callback_context.state.get("ledger", _empty_ledger())
+    current_state = callback_context.state.get("fsm_state", fsm.initial_state)
+
+    # detect_intent: global FSM transition (wipes ledger keys in-place), early return
+    if tool.name == "detect_intent":
+        intent = result_data.get("detected_intent", "")
+        if intent:
+            new_state = fsm.evaluate(current_state, ledger, intent_override=intent)
+            callback_context.state["fsm_state"] = new_state
+            callback_context.state["ledger"] = ledger  # ledger may have been wiped
+        return tool_response
+
+    # Determine ledger context key
+    if tool.name == "pricing":
+        context_key = "trade_in_context" if current_state == "TradeInPricing" else "new_device_context"
+    else:
+        context_key = TOOL_LEDGER_MAP.get(tool.name)
+
+    if context_key and isinstance(result_data, dict):
+        ledger.setdefault(context_key, {}).update(result_data)
+        print(f"[Ledger] Updated {context_key}: {ledger[context_key]}")
+
+    callback_context.state["ledger"] = ledger
+    new_state = fsm.evaluate(current_state, ledger)
+    callback_context.state["fsm_state"] = new_state
+
+    return tool_response
+
+
+# ---------------------------------------------------------------------------
+# MCP Toolset (HTTP transport — Phase 2)
+# ---------------------------------------------------------------------------
+
+MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://127.0.0.1:8080/mcp")
+
+mcp_toolset = McpToolset(
+    connection_params=StreamableHTTPConnectionParams(url=MCP_SERVER_URL, timeout=10.0)
+)
+
+# ---------------------------------------------------------------------------
+# ADK-discoverable agent (adk web looks for `root_agent` at module level)
+# ---------------------------------------------------------------------------
+
+root_agent = Agent(
+    name="TelcoManager",
+    model="gemini-2.5-pro",
+    instruction="You are a helpful Telco Customer Service AI.",
+    tools=[mcp_toolset],
+    before_model_callback=before_model,
+    after_tool_callback=after_tool,
+)

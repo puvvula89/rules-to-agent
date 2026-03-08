@@ -24,7 +24,7 @@ states:
     transitions:
       - condition: "account_context.get('is_authorized', False) == True"
         next_state: AccountStandingCheck
-      - condition: "account_context.get('is_authorized', True) == False"
+      - condition: "account_context.get('is_authorized') == False"
         next_state: EndUnauthorized
 
   AccountStandingCheck:
@@ -32,7 +32,7 @@ states:
     transitions:
       - condition: "account_context.get('standing') == 'GOOD'"
         next_state: LineToUpgrade
-      - condition: "account_context.get('standing', 'GOOD') != 'GOOD'"
+      - condition: "account_context.get('standing') is not None and account_context.get('standing') != 'GOOD'"
         next_state: EndBadStanding
 
   LineToUpgrade:
