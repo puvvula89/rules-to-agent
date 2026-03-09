@@ -30,4 +30,4 @@ poetry.toml
 .DS_Store
 
 # Test logs
-logs/
+# logs/
