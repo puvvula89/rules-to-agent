@@ -1,0 +1,137 @@
+
+============================================================
+TEST: test_happy_path_with_trade_in
+============================================================
+
+============================================================
+Session started: fc680659-30a8-4064-9831-9a7437f2cc7f
+============================================================
+
+[USER] Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.
+[FSM] Auth → Auth | extracted: {'account_context': {'is_authorized': 'true'}}
+  [TOOLS] verify_auth
+  [FSM]   Auth
+[AGENT] Great, thanks! I've confirmed you're an authorized account holder.
+```json
+{
+"account_context": {
+"is_authorized": "true"
+}
+}
+```
+
+============================================================
+TEST: test_no_trade_in_path
+============================================================
+
+============================================================
+Session started: d3f1f4dd-71f1-48af-831d-0b6a21e9a81f
+============================================================
+
+[USER] Account 1234, PIN 0000.
+[FSM] Auth → AccountStandingCheck | extracted: {'account_context': {'is_authorized': True}}
+  [TOOLS] verify_auth
+  [FSM]   AccountStandingCheck
+[AGENT] ```json
+{
+"account_context": {
+"is_authorized": true
+}
+}
+```
+
+[USER] Upgrade line 555-999-0000.
+[FSM] AccountStandingCheck → LineToUpgrade | extracted: {'account_context': {'standing': 'GOOD'}}
+  [TOOLS] check_standing
+  [FSM]   LineToUpgrade
+[AGENT] ```json
+{
+"account_context": {
+"standing": "GOOD"
+}
+}
+```
+
+[USER] No, I don't want to trade in my old device.
+[FSM] LineToUpgrade → LineToUpgrade | extracted: {'trade_in_context': {'wants_trade_in': False}}
+  [TOOLS] set_trade_in_preference
+  [FSM]   LineToUpgrade
+[AGENT] ```json
+{
+"trade_in_context": {
+"wants_trade_in": false
+}
+}
+```
+
+============================================================
+TEST: test_unauthorized_path
+============================================================
+
+============================================================
+Session started: f995db1a-978b-4636-a8a9-167e810591a3
+============================================================
+
+[USER] My account number is 9999 and PIN is 1234.
+[FSM] Auth → Auth | extracted: {'account_context': {'is_authorized': 'false'}}
+  [TOOLS] verify_auth
+  [FSM]   Auth
+[AGENT] I'm sorry, but the account number or PIN you provided is incorrect. Please try again.
+```json
+{
+"account_context": {
+"is_authorized": "false"
+}
+}
+```
+
+FINAL STATE: Auth
+✓ Unauthorized path reached: Auth
+
+============================================================
+TEST: test_change_of_mind
+============================================================
+
+============================================================
+Session started: b446def8-fce1-411d-9e3f-7f3b5cbd534d
+============================================================
+
+[USER] Account 1234, PIN 5678.
+[FSM] Auth → Auth | extracted: {'account_context': {'is_authorized': 'true'}}
+  [TOOLS] verify_auth
+  [FSM]   Auth
+[AGENT] I have verified your account.
+
+```json
+{
+"account_context": {
+"is_authorized": "true"
+}
+}
+```
+
+[USER] Line 555-111-2222.
+  [TOOLS] check_eligibility
+  [FSM]   Auth
+[AGENT] That line is eligible for an upgrade! Would you like to trade in your current phone?
+
+[USER] No trade-in.
+  [TOOLS] set_trade_in_preference
+  [FSM]   Auth
+[AGENT] What new device are you interested in?
+
+[USER] I want the Pixel 9.
+  [TOOLS] select_device → pricing
+  [FSM]   Auth
+[AGENT] The Pixel 9 is available for $1,000.
+
+Would you like to proceed with the purchase?
+
+[USER] Actually wait, I changed my mind. I want a different device.
+[FSM] Intent 'change_new_device': Auth → NewUpgradeDeviceSelection
+  [TOOLS] detect_intent
+  [FSM]   NewUpgradeDeviceSelection
+[AGENT] No problem. What new device are you interested in?
+
+After change of mind: NewUpgradeDeviceSelection
+✓ Change of mind handled: NewUpgradeDeviceSelection

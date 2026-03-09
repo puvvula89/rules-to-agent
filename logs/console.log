@@ -15,15 +15,21 @@ TEST: test_happy_path_with_trade_in
 ============================================================
 
 ============================================================
-Session started: d1d7bfa7-b93d-4f0b-9345-5e6db3f6d7e0
+Session started: fc680659-30a8-4064-9831-9a7437f2cc7f
 ============================================================
 
 [USER] Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.
-[Ledger] Updated account_context: {'content': [{'type': 'text', 'text': '{\n  "is_authorized": true\n}'}], 'isError': False}
-[FSM] No conditions met. Staying in Auth.
+[FSM] Auth → Auth | extracted: {'account_context': {'is_authorized': 'true'}}
   [TOOLS] verify_auth
   [FSM]   Auth
-[AGENT] Thanks for verifying your account! I can help you with an upgrade. Which line would you like to upgrade?
+[AGENT] Great, thanks! I've confirmed you're an authorized account holder.
+```json
+{
+"account_context": {
+"is_authorized": "true"
+}
+}
+```
 FAILED
 tests/test_e2e_live.py::test_no_trade_in_path 
 ============================================================
@@ -31,26 +37,44 @@ TEST: test_no_trade_in_path
 ============================================================
 
 ============================================================
-Session started: 2dd5c296-fedb-43ac-9976-2a69689c4a46
+Session started: d3f1f4dd-71f1-48af-831d-0b6a21e9a81f
 ============================================================
 
 [USER] Account 1234, PIN 0000.
-[Ledger] Updated account_context: {'content': [{'type': 'text', 'text': '{\n  "is_authorized": true\n}'}], 'isError': False}
-[FSM] No conditions met. Staying in Auth.
+[FSM] Auth → AccountStandingCheck | extracted: {'account_context': {'is_authorized': True}}
   [TOOLS] verify_auth
-  [FSM]   Auth
-[AGENT] OK. You're authorized. What would you like to do? (For example: upgrade a device, add a line, change your plan).
+  [FSM]   AccountStandingCheck
+[AGENT] ```json
+{
+"account_context": {
+"is_authorized": true
+}
+}
+```
 
 [USER] Upgrade line 555-999-0000.
-  [FSM]   Auth
-[AGENT] Which device would you like to upgrade to?
+[FSM] AccountStandingCheck → LineToUpgrade | extracted: {'account_context': {'standing': 'GOOD'}}
+  [TOOLS] check_standing
+  [FSM]   LineToUpgrade
+[AGENT] ```json
+{
+"account_context": {
+"standing": "GOOD"
+}
+}
+```
 
 [USER] No, I don't want to trade in my old device.
-  [TOOLS] detect_intent
-  [FSM]   Auth
-[AGENT] Got it. You don't want to trade in your old device.
-
-Which new device would you like to get?
+[FSM] LineToUpgrade → LineToUpgrade | extracted: {'trade_in_context': {'wants_trade_in': False}}
+  [TOOLS] set_trade_in_preference
+  [FSM]   LineToUpgrade
+[AGENT] ```json
+{
+"trade_in_context": {
+"wants_trade_in": false
+}
+}
+```
 FAILED
 tests/test_e2e_live.py::test_unauthorized_path 
 ============================================================
@@ -58,15 +82,21 @@ TEST: test_unauthorized_path
 ============================================================
 
 ============================================================
-Session started: be069751-1fa4-4c87-b296-6de6ad2259a2
+Session started: f995db1a-978b-4636-a8a9-167e810591a3
 ============================================================
 
 [USER] My account number is 9999 and PIN is 1234.
-[Ledger] Updated account_context: {'content': [{'type': 'text', 'text': '{\n  "is_authorized": false\n}'}], 'isError': False}
-[FSM] No conditions met. Staying in Auth.
+[FSM] Auth → Auth | extracted: {'account_context': {'is_authorized': 'false'}}
   [TOOLS] verify_auth
   [FSM]   Auth
-[AGENT] I'm sorry, but the account number or PIN you provided is incorrect. Please provide the correct account number and PIN.
+[AGENT] I'm sorry, but the account number or PIN you provided is incorrect. Please try again.
+```json
+{
+"account_context": {
+"is_authorized": "false"
+}
+}
+```
 
 FINAL STATE: Auth
 ✓ Unauthorized path reached: Auth
@@ -77,101 +107,60 @@ TEST: test_change_of_mind
 ============================================================
 
 ============================================================
-Session started: a4ed0a1d-cc3b-4841-8fa4-f09d7a060592
+Session started: b446def8-fce1-411d-9e3f-7f3b5cbd534d
 ============================================================
 
 [USER] Account 1234, PIN 5678.
-[Ledger] Updated account_context: {'content': [{'type': 'text', 'text': '{\n  "is_authorized": true\n}'}], 'isError': False}
-[FSM] No conditions met. Staying in Auth.
+[FSM] Auth → Auth | extracted: {'account_context': {'is_authorized': 'true'}}
   [TOOLS] verify_auth
   [FSM]   Auth
-[AGENT] What would you like to do today? I can help you upgrade your device, provide upgrade options, or get details about a specific device.
+[AGENT] I have verified your account.
+
+```json
+{
+"account_context": {
+"is_authorized": "true"
+}
+}
+```
 
 [USER] Line 555-111-2222.
-[ERROR] Exception during runner.run_async on turn: 'Line 555-111-2222.'
-Traceback (most recent call last):
-  File "/Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py", line 98, in send
-    async for event in self.runner.run_async(
-    ...<9 lines>...
-                    final_text += part.text
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 565, in run_async
-    async for event in agen:
-      yield event
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 550, in _run_with_trace
-    async for event in agen:
-      yield event
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 782, in _exec_with_plugin
-    async for event in agen:
-    ...<64 lines>...
-        yield event
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 539, in execute
-    async for event in agen:
-      yield event
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py", line 295, in run_async
-    async for event in agen:
-      yield event
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py", line 470, in _run_async_impl
-    async for event in agen:
-    ...<5 lines>...
-        should_pause = True
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 752, in run_async
-    async for event in agen:
-      last_event = event
-      yield event
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 839, in _run_one_step_async
-    async for event in agen:
-    ...<3 lines>...
-      yield event
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 932, in _postprocess_async
-    async for event in agen:
-      yield event
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1050, in _postprocess_handle_function_calls_async
-    if function_response_event := await functions.handle_function_calls_async(
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        invocation_context, function_call_event, llm_request.tools_dict
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    ):
-    ^
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 355, in handle_function_calls_async
-    return await handle_function_call_list_async(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    ...<5 lines>...
-    )
-    ^
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 401, in handle_function_call_list_async
-    function_response_events = await asyncio.gather(*tasks)
-                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 495, in _execute_single_function_call_async
-    raise tool_error
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 481, in _execute_single_function_call_async
-    tool = _get_tool(function_call, tools_dict)
-  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py", line 959, in _get_tool
-    raise ValueError(error_msg)
-ValueError: Tool 'get_upgrade_options' not found.
-Available tools: verify_auth, check_standing, check_eligibility, set_line, set_trade_in_preference, record_condition, pricing, select_device, confirm_order, decline_order, submit_order, detect_intent
+  [TOOLS] check_eligibility
+  [FSM]   Auth
+[AGENT] That line is eligible for an upgrade! Would you like to trade in your current phone?
 
-Possible causes:
-  1. LLM hallucinated the function name - review agent instruction clarity
-  2. Tool not registered - verify agent.tools list
-  3. Name mismatch - check for typos
+[USER] No trade-in.
+  [TOOLS] set_trade_in_preference
+  [FSM]   Auth
+[AGENT] What new device are you interested in?
 
-Suggested fixes:
-  - Review agent instruction to ensure tool usage is clear
-  - Verify tool is included in agent.tools list
-  - Check for typos in function name
+[USER] I want the Pixel 9.
+  [TOOLS] select_device → pricing
+  [FSM]   Auth
+[AGENT] The Pixel 9 is available for $1,000.
 
-FAILED
+Would you like to proceed with the purchase?
 
-======================================================= FAILURES =======================================================
-____________________________________________ test_happy_path_with_trade_in _____________________________________________
+[USER] Actually wait, I changed my mind. I want a different device.
+[FSM] Intent 'change_new_device': Auth → NewUpgradeDeviceSelection
+  [TOOLS] detect_intent
+  [FSM]   NewUpgradeDeviceSelection
+[AGENT] No problem. What new device are you interested in?
+
+After change of mind: NewUpgradeDeviceSelection
+✓ Change of mind handled: NewUpgradeDeviceSelection
+PASSED
+
+============================================================================================== FAILURES ===============================================================================================
+____________________________________________________________________________________ test_happy_path_with_trade_in ____________________________________________________________________________________
 
     @pytest.mark.asyncio
     @pytest.mark.live
     async def test_happy_path_with_trade_in():
 >       await run_happy_path_with_trade_in()
 
-tests/test_e2e_live.py:292: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_e2e_live.py:299: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
     async def run_happy_path_with_trade_in():
         """Full happy path: account 1234, trade in iPhone 13 Good, buy iPhone 16."""
@@ -189,20 +178,20 @@ E
 E         - AccountStandingCheck
 E         + Auth
 
-tests/test_e2e_live.py:153: AssertionError
--------------------------------------------------- Captured log call ---------------------------------------------------
+tests/test_e2e_live.py:160: AssertionError
+------------------------------------------------------------------------------------------ Captured log call ------------------------------------------------------------------------------------------
 WARNING  google_genai.types:types.py:7460 Warning: there are non-text parts in the response: ['function_call'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
------------------------------------------------- Captured log teardown -------------------------------------------------
+---------------------------------------------------------------------------------------- Captured log teardown ----------------------------------------------------------------------------------------
 WARNING  google_adk.google.adk.tools.mcp_tool.session_context:session_context.py:190 Error on session runner task:
-________________________________________________ test_no_trade_in_path _________________________________________________
+________________________________________________________________________________________ test_no_trade_in_path ________________________________________________________________________________________
 
     @pytest.mark.asyncio
     @pytest.mark.live
     async def test_no_trade_in_path():
 >       await run_no_trade_in_path()
 
-tests/test_e2e_live.py:298: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_e2e_live.py:305: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
     async def run_no_trade_in_path():
         """No trade-in path: skip straight to device selection."""
@@ -217,123 +206,35 @@ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
     
 >       assert session.fsm_state() in ("NewUpgradeDeviceSelection", "VerifyTradeIn"), \
             f"Expected to skip trade-in, got {session.fsm_state()}"
-E       AssertionError: Expected to skip trade-in, got Auth
-E       assert 'Auth' in ('NewUpgradeDeviceSelection', 'VerifyTradeIn')
-E        +  where 'Auth' = fsm_state()
-E        +    where fsm_state = <test_e2e_live.AgentSession object at 0x10ed40e10>.fsm_state
+E       AssertionError: Expected to skip trade-in, got LineToUpgrade
+E       assert 'LineToUpgrade' in ('NewUpgradeDeviceSelection', 'VerifyTradeIn')
+E        +  where 'LineToUpgrade' = fsm_state()
+E        +    where fsm_state = <test_e2e_live.AgentSession object at 0x115a451d0>.fsm_state
 
-tests/test_e2e_live.py:208: AssertionError
--------------------------------------------------- Captured log call ---------------------------------------------------
+tests/test_e2e_live.py:215: AssertionError
+------------------------------------------------------------------------------------------ Captured log call ------------------------------------------------------------------------------------------
 WARNING  google_adk.google.adk.tools.mcp_tool.mcp_session_manager:mcp_session_manager.py:328 Error cleaning up session session_no_headers: original event loop is closed, resources may be leaked.
------------------------------------------------- Captured log teardown -------------------------------------------------
+---------------------------------------------------------------------------------------- Captured log teardown ----------------------------------------------------------------------------------------
 WARNING  google_adk.google.adk.tools.mcp_tool.session_context:session_context.py:190 Error on session runner task:
-_________________________________________________ test_change_of_mind __________________________________________________
-
-    @pytest.mark.asyncio
-    @pytest.mark.live
-    async def test_change_of_mind():
->       await run_change_of_mind()
-
-tests/test_e2e_live.py:310: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-tests/test_e2e_live.py:245: in run_change_of_mind
-    await session.send("Line 555-111-2222.")
-tests/test_e2e_live.py:98: in send
-    async for event in self.runner.run_async(
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py:565: in run_async
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py:550: in _run_with_trace
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py:782: in _exec_with_plugin
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py:539: in execute
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py:295: in run_async
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py:470: in _run_async_impl
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py:752: in run_async
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py:839: in _run_one_step_async
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py:932: in _postprocess_async
-    async for event in agen:
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py:1050: in _postprocess_handle_function_calls_async
-    if function_response_event := await functions.handle_function_calls_async(
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py:355: in handle_function_calls_async
-    return await handle_function_call_list_async(
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py:401: in handle_function_call_list_async
-    function_response_events = await asyncio.gather(*tasks)
-                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py:495: in _execute_single_function_call_async
-    raise tool_error
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py:481: in _execute_single_function_call_async
-    tool = _get_tool(function_call, tools_dict)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-function_call = FunctionCall(
-  args={
-    'imei': '555-111-2222'
-  },
-  id='adk-69d6e00d-5d63-4120-802c-5d1d96df0e52',
-  name='get_upgrade_options'
-)
-tools_dict = {'check_eligibility': <google.adk.tools.mcp_tool.mcp_tool.MCPTool object at 0x118f38cb0>, 'check_standing': <google.ad...PTool object at 0x118f820a0>, 'decline_order': <google.adk.tools.mcp_tool.mcp_tool.MCPTool object at 0x118f81e90>, ...}
-
-    def _get_tool(
-        function_call: types.FunctionCall, tools_dict: dict[str, BaseTool]
-    ):
-      """Returns the tool corresponding to the function call."""
-      if function_call.name not in tools_dict:
-        available = list(tools_dict.keys())
-        error_msg = (
-            f"Tool '{function_call.name}' not found.\nAvailable tools:"
-            f" {', '.join(available)}\n\nPossible causes:\n  1. LLM hallucinated"
-            ' the function name - review agent instruction clarity\n  2. Tool not'
-            ' registered - verify agent.tools list\n  3. Name mismatch - check for'
-            ' typos\n\nSuggested fixes:\n  - Review agent instruction to ensure'
-            ' tool usage is clear\n  - Verify tool is included in agent.tools'
-            ' list\n  - Check for typos in function name'
-        )
->       raise ValueError(error_msg)
-E       ValueError: Tool 'get_upgrade_options' not found.
-E       Available tools: verify_auth, check_standing, check_eligibility, set_line, set_trade_in_preference, record_condition, pricing, select_device, confirm_order, decline_order, submit_order, detect_intent
-E       
-E       Possible causes:
-E         1. LLM hallucinated the function name - review agent instruction clarity
-E         2. Tool not registered - verify agent.tools list
-E         3. Name mismatch - check for typos
-E       
-E       Suggested fixes:
-E         - Review agent instruction to ensure tool usage is clear
-E         - Verify tool is included in agent.tools list
-E         - Check for typos in function name
-
-../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/functions.py:959: ValueError
--------------------------------------------------- Captured log call ---------------------------------------------------
-WARNING  google_adk.google.adk.tools.mcp_tool.mcp_session_manager:mcp_session_manager.py:328 Error cleaning up session session_no_headers: original event loop is closed, resources may be leaked.
------------------------------------------------- Captured log teardown -------------------------------------------------
-WARNING  google_adk.google.adk.tools.mcp_tool.session_context:session_context.py:190 Error on session runner task:
-=================================================== warnings summary ===================================================
+========================================================================================== warnings summary ===========================================================================================
 ../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/types.py:43
   /Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/types.py:43: DeprecationWarning: '_UnionGenericAlias' is deprecated and slated for removal in Python 3.17
     VersionedUnionType = Union[builtin_types.UnionType, _UnionGenericAlias]
 
-tests/test_e2e_live.py:290
-  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:290: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+tests/test_e2e_live.py:297
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:297: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
     @pytest.mark.live
 
-tests/test_e2e_live.py:296
-  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:296: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+tests/test_e2e_live.py:303
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:303: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
     @pytest.mark.live
 
-tests/test_e2e_live.py:302
-  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:302: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+tests/test_e2e_live.py:309
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:309: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
     @pytest.mark.live
 
-tests/test_e2e_live.py:308
-  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:308: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+tests/test_e2e_live.py:315
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:315: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
     @pytest.mark.live
 
 tests/test_e2e_live.py::test_happy_path_with_trade_in
@@ -343,7 +244,7 @@ tests/test_e2e_live.py::test_change_of_mind
   /opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py:109: DeprecationWarning: Use `streamable_http_client` instead.
     self.gen = func(*args, **kwds)
 
-tests/test_e2e_live.py: 228 warnings
+tests/test_e2e_live.py: 372 warnings
   /Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/tools/mcp_tool/mcp_toolset.py:313: DeprecationWarning: MCPTool class is deprecated, use `McpTool` instead.
     mcp_tool = MCPTool(
 
@@ -352,11 +253,7 @@ tests/test_e2e_live.py::test_happy_path_with_trade_in
     check_feature_enabled()
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-=============================================== short test summary info ================================================
+======================================================================================= short test summary info =======================================================================================
 FAILED tests/test_e2e_live.py::test_happy_path_with_trade_in - AssertionError: Expected AccountStandingCheck, got Auth
-FAILED tests/test_e2e_live.py::test_no_trade_in_path - AssertionError: Expected to skip trade-in, got Auth
-FAILED tests/test_e2e_live.py::test_change_of_mind - ValueError: Tool 'get_upgrade_options' not found.
-====================================== 3 failed, 1 passed, 238 warnings in 47.02s ======================================
-*** gpkg: This tool is configured to use Corp Airlock for package installs: http://go/corp-airlock
-*** gpkg: If Corp Airlock is breaking your workflow please report at: http://go/corp-airlock-feedback
-*** gpkg: Exceptions are available: http://go/corp-airlock#request-exception
+FAILED tests/test_e2e_live.py::test_no_trade_in_path - AssertionError: Expected to skip trade-in, got LineToUpgrade
+======================================================================== 2 failed, 2 passed, 382 warnings in 75.83s (0:01:15) ======
