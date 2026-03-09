@@ -1,116 +1,166 @@
-use_case: phone_upgrade_flow
-initial_state: Auth
-
-# Evaluated by Python FSM BEFORE local states to handle "Change of Mind"
-global_transitions:
-  - intent: "change_line"
-    next_state: LineToUpgrade
-    # Wiping the line invalidates EVERYTHING downstream
-    clear_memory: ["line_context", "trade_in_context", "new_device_context", "order_context"]
-
-  - intent: "change_trade_in_device"
-    next_state: DeviceTradeInChecks
-    # Wiping the trade-in invalidates the final math, but keeps the new device choice
-    clear_memory: ["trade_in_context", "order_context"]
-
-  - intent: "change_new_device"
-    next_state: NewUpgradeDeviceSelection
-    # Wiping the new device invalidates the final math, but keeps the trade-in quote intact
-    clear_memory: ["new_device_context", "order_context"]
+name: phone_upgrade_flow
+initial: Auth
 
 states:
-  Auth:
+  - name: Auth
     objective: "Verify the user is an authorized account holder using the verify_auth tool."
-    transitions:
-      - condition: "account_context.get('is_authorized', False) == True"
-        next_state: AccountStandingCheck
-      - condition: "account_context.get('is_authorized') == False"
-        next_state: EndUnauthorized
+    extract_variables: ["account_context.is_authorized"]
 
-  AccountStandingCheck:
+  - name: AccountStandingCheck
     objective: "Check if the account standing is good using the check_standing tool."
-    transitions:
-      - condition: "account_context.get('standing') == 'GOOD'"
-        next_state: LineToUpgrade
-      - condition: "account_context.get('standing') is not None and account_context.get('standing') != 'GOOD'"
-        next_state: EndBadStanding
+    extract_variables: ["account_context.standing"]
 
-  LineToUpgrade:
+  - name: LineToUpgrade
     objective: "Determine which phone line the user wants to upgrade."
-    transitions:
-      - condition: "line_context.get('selected_number') is not None"
-        next_state: CheckLineUpgradeEligibility
+    extract_variables: ["line_context.selected_number"]
 
-  CheckLineUpgradeEligibility:
+  - name: CheckLineUpgradeEligibility
     objective: "Check if the selected line is eligible for an upgrade using the backend tool."
-    transitions:
-      - condition: "line_context.get('is_eligible', False) == True"
-        next_state: VerifyTradeIn
-      - condition: "line_context.get('is_eligible', True) == False"
-        next_state: EndNotEligible
+    extract_variables: ["line_context.is_eligible"]
 
-  VerifyTradeIn:
+  - name: VerifyTradeIn
     objective: "Ask the user if they want to trade in their current device."
-    transitions:
-      - condition: "trade_in_context.get('wants_trade_in', False) == True"
-        next_state: DeviceTradeInChecks
-      - condition: "trade_in_context.get('wants_trade_in', True) == False"
-        next_state: NewUpgradeDeviceSelection
+    extract_variables: ["trade_in_context.wants_trade_in"]
 
-  DeviceTradeInChecks:
+  - name: DeviceTradeInChecks
     objective: "Ask the user about the physical condition of their trade-in device."
-    transitions:
-      - condition: "trade_in_context.get('final_condition') is not None"
-        next_state: TradeInPricing
+    extract_variables: ["trade_in_context.final_condition"]
 
-  TradeInPricing:
+  - name: TradeInPricing
     objective: "Get the trade-in quote via the pricing tool based on the final condition."
-    transitions:
-      - condition: "trade_in_context.get('quote_value', -1) >= 0"
-        next_state: NewUpgradeDeviceSelection
+    extract_variables: ["trade_in_context.quote_value"]
 
-  NewUpgradeDeviceSelection:
+  - name: NewUpgradeDeviceSelection
     objective: "Determine which new device the user wants to purchase."
-    transitions:
-      - condition: "new_device_context.get('selection') is not None"
-        next_state: NewUpgradeDevicePricing
+    extract_variables: ["new_device_context.selection"]
 
-  NewUpgradeDevicePricing:
+  - name: NewUpgradeDevicePricing
     objective: "Get the pricing for the selected new device using the catalog tool."
-    transitions:
-      - condition: "new_device_context.get('price', -1) > 0"
-        next_state: FinalPricing
+    extract_variables: ["new_device_context.price"]
 
-  FinalPricing:
+  - name: FinalPricing
     objective: "Calculate final price (New Device Price - Trade In Quote) and present the summary to the user."
-    transitions:
-      - condition: "order_context.get('user_confirmed', False) == True"
-        next_state: ProcessOrder
+    extract_variables: ["order_context.user_confirmed"]
 
-  ProcessOrder:
+  - name: ProcessOrder
     objective: "Submit the final transaction using the submit_order tool and confirm success with the user."
-    transitions:
-      - condition: "order_context.get('order_id') is not None"
-        next_state: EndSuccess
-      - condition: "order_context.get('error', False) == True"
-        next_state: EndOrderFailed
+    extract_variables: ["order_context.order_id", "order_context.error"]
 
-  EndSuccess:
+  - name: EndSuccess
     objective: "Thank the user and gracefully end the conversation."
-    transitions: [] # Empty transitions denote a terminal state
+    extract_variables: []
 
-  EndOrderFailed:
+  - name: EndOrderFailed
     objective: "Apologize to the user, explain the order failed, and offer to transfer to a human agent."
-    transitions: []
-  
-  EndUnauthorized:
+    extract_variables: []
+
+  - name: EndUnauthorized
     objective: "Inform the user they are not authorized and end the conversation."
-    transitions: []
-    
-  EndBadStanding:
+    extract_variables: []
+
+  - name: EndBadStanding
     objective: "Inform the user their account standing prevents an upgrade and end the conversation."
-    transitions: []
-    
-  EndNotEligible:
+    extract_variables: []
+
+  - name: EndNotEligible
     objective: "Inform the user the selected line is not eligible for an upgrade at this time."
-    transitions: []
+    extract_variables: []
+
+transitions:
+  # Global intents — fire from any state (change-of-mind)
+  - trigger: intent_change_line
+    source: "*"
+    dest: LineToUpgrade
+    before: clear_line_memory
+
+  - trigger: intent_change_trade_in_device
+    source: "*"
+    dest: DeviceTradeInChecks
+    before: clear_trade_in_memory
+
+  - trigger: intent_change_new_device
+    source: "*"
+    dest: NewUpgradeDeviceSelection
+    before: clear_new_device_memory
+
+  # Local transitions — all use universal trigger: advance + per-transition condition method
+  # Note: condition strings use context['key'].get(...) syntax (simpleeval blocks {} literals)
+  - trigger: advance
+    source: Auth
+    dest: AccountStandingCheck
+    condition_string: "context['account_context'].get('is_authorized') == True"
+
+  - trigger: advance
+    source: Auth
+    dest: EndUnauthorized
+    condition_string: "context['account_context'].get('is_authorized') == False"
+
+  - trigger: advance
+    source: AccountStandingCheck
+    dest: LineToUpgrade
+    condition_string: "context['account_context'].get('standing') == 'GOOD'"
+
+  - trigger: advance
+    source: AccountStandingCheck
+    dest: EndBadStanding
+    condition_string: "context['account_context'].get('standing') is not None and context['account_context'].get('standing') != 'GOOD'"
+
+  - trigger: advance
+    source: LineToUpgrade
+    dest: CheckLineUpgradeEligibility
+    condition_string: "context['line_context'].get('selected_number') is not None"
+
+  - trigger: advance
+    source: CheckLineUpgradeEligibility
+    dest: VerifyTradeIn
+    condition_string: "context['line_context'].get('is_eligible') == True"
+
+  - trigger: advance
+    source: CheckLineUpgradeEligibility
+    dest: EndNotEligible
+    condition_string: "context['line_context'].get('is_eligible') == False"
+
+  - trigger: advance
+    source: VerifyTradeIn
+    dest: DeviceTradeInChecks
+    condition_string: "context['trade_in_context'].get('wants_trade_in') == True"
+
+  - trigger: advance
+    source: VerifyTradeIn
+    dest: NewUpgradeDeviceSelection
+    condition_string: "context['trade_in_context'].get('wants_trade_in') == False"
+
+  - trigger: advance
+    source: DeviceTradeInChecks
+    dest: TradeInPricing
+    condition_string: "context['trade_in_context'].get('final_condition') is not None"
+
+  - trigger: advance
+    source: TradeInPricing
+    dest: NewUpgradeDeviceSelection
+    condition_string: "context['trade_in_context'].get('quote_value', -1) >= 0"
+
+  - trigger: advance
+    source: NewUpgradeDeviceSelection
+    dest: NewUpgradeDevicePricing
+    condition_string: "context['new_device_context'].get('selection') is not None"
+
+  - trigger: advance
+    source: NewUpgradeDevicePricing
+    dest: FinalPricing
+    condition_string: "context['new_device_context'].get('price', -1) > 0"
+
+  - trigger: advance
+    source: FinalPricing
+    dest: ProcessOrder
+    condition_string: "context['order_context'].get('user_confirmed') == True"
+
+  - trigger: advance
+    source: ProcessOrder
+    dest: EndSuccess
+    condition_string: "context['order_context'].get('order_id') is not None"
+
+  - trigger: advance
+    source: ProcessOrder
+    dest: EndOrderFailed
+    condition_string: "context['order_context'].get('error') == True"

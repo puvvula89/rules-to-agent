@@ -128,7 +128,7 @@ def test_change_line_intent_resets_ledger(fsm):
         new_device_context={"selection": "Pixel 9"},
         order_context={"user_confirmed": True},
     )
-    new_state = fsm.evaluate("FinalPricing", ledger, intent_override="change_line")
+    new_state = fsm.fire_intent("FinalPricing", "change_line", ledger)
     assert new_state == "LineToUpgrade"
     assert ledger["line_context"] == {}
     assert ledger["trade_in_context"] == {}
@@ -142,7 +142,7 @@ def test_change_new_device_intent_resets_device(fsm):
         new_device_context={"selection": "Pixel 9", "price": 800},
         order_context={"user_confirmed": True},
     )
-    new_state = fsm.evaluate("FinalPricing", ledger, intent_override="change_new_device")
+    new_state = fsm.fire_intent("FinalPricing", "change_new_device", ledger)
     assert new_state == "NewUpgradeDeviceSelection"
     assert ledger["new_device_context"] == {}
     assert ledger["order_context"] == {}

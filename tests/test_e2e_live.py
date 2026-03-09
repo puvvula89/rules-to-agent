@@ -49,6 +49,14 @@ log.propagate = False
 log.addHandler(_file_handler)
 log.addHandler(_stdout_handler)
 
+# Also route internal module loggers (manager.py, fsm.py) to the same file.
+for _mod in ("agents.manager", "orchestrator.fsm"):
+    _ml = logging.getLogger(_mod)
+    _ml.setLevel(logging.DEBUG)
+    _ml.propagate = False
+    _ml.addHandler(_file_handler)
+    _ml.addHandler(_stdout_handler)
+
 from google.adk import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types

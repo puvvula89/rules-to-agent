@@ -3,8 +3,12 @@ Integration tests for the full agent flow.
 
 Two layers:
   1. MCP server HTTP smoke tests — verifies all 12 tools respond correctly
-  2. Callback pipeline simulation — exercises before_model + after_tool + FSM
+  2. Callback pipeline simulation — exercises before_model + after_model + after_tool + FSM
      with mock ADK objects (no real LLM call needed)
+
+Architecture change (dynamic FSM-LLM):
+  - after_tool: only handles detect_intent (no ledger updates for other tools)
+  - after_model: parses ```json...``` block from LLM text, merges into ledger, advances FSM
 """
 
 import sys
@@ -56,6 +60,37 @@ class MockLlmRequest:
 class MockBaseTool:
     def __init__(self, name):
         self.name = name
+
+
+class MockPart:
+    def __init__(self, text=None, function_call=None):
+        self.text = text
+        self.function_call = function_call
+
+
+class MockContent:
+    def __init__(self, parts):
+        self.parts = parts
+
+
+class MockLlmResponse:
+    def __init__(self, text=None, has_function_call=False):
+        parts = []
+        if text:
+            parts.append(MockPart(text=text))
+        if has_function_call:
+            parts.append(MockPart(function_call=object()))
+        self.content = MockContent(parts)
+
+
+def _empty_ledger():
+    return {
+        "account_context": {},
+        "line_context": {},
+        "trade_in_context": {},
+        "new_device_context": {},
+        "order_context": {},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +208,7 @@ class TestMCPServer:
 # ---------------------------------------------------------------------------
 
 from agents.manager import (
-    before_model, after_tool, fsm, STATE_TOOLS, GLOBAL_INTENT_STATES
+    before_model, after_tool, after_model, fsm, STATE_TOOLS, GLOBAL_INTENT_STATES
 )
 
 ALL_TOOL_NAMES = [
@@ -197,12 +232,19 @@ def visible_tools(req: MockLlmRequest) -> list[str]:
 
 def run_after_tool(tool_name: str, result: dict, state: str, ledger: dict = None) -> MockCallbackContext:
     """Run after_tool callback and return the updated context."""
-    ledger = ledger or {
-        "account_context": {}, "line_context": {}, "trade_in_context": {},
-        "new_device_context": {}, "order_context": {},
-    }
+    ledger = ledger or _empty_ledger()
     ctx = MockCallbackContext({"fsm_state": state, "ledger": ledger})
     after_tool(MockBaseTool(tool_name), {}, ctx, result)
+    return ctx
+
+
+def run_after_model(json_data: dict, state: str, ledger: dict = None) -> MockCallbackContext:
+    """Run after_model callback with a response containing a JSON block."""
+    json_str = json.dumps(json_data)
+    text = f"Processing complete.\n```json\n{json_str}\n```"
+    ctx = MockCallbackContext({"fsm_state": state, "ledger": ledger or _empty_ledger()})
+    response = MockLlmResponse(text=text)
+    after_model(ctx, response)
     return ctx
 
 
@@ -240,76 +282,128 @@ class TestBeforeModelFiltering:
         req = run_before_model("LineToUpgrade")
         assert "detect_intent" in req.config.system_instruction
 
+    def test_system_instruction_contains_extract_variables(self):
+        req = run_before_model("Auth")
+        assert "account_context.is_authorized" in req.config.system_instruction
 
-class TestAfterToolLedgerAndFSM:
-    def test_verify_auth_success_updates_ledger_and_advances(self):
+    def test_system_instruction_contains_json_instruction(self):
+        req = run_before_model("AccountStandingCheck")
+        assert "```json" in req.config.system_instruction or "json" in req.config.system_instruction
+
+
+class TestAfterToolDoesNotAdvanceFSM:
+    """In the new architecture, after_tool only handles detect_intent."""
+
+    def test_verify_auth_after_tool_does_not_advance(self):
         ctx = run_after_tool("verify_auth", {"is_authorized": True}, "Auth")
+        # FSM stays in Auth — advancement happens in after_model
+        assert ctx.state["fsm_state"] == "Auth"
+
+    def test_check_standing_after_tool_does_not_advance(self):
+        ctx = run_after_tool("check_standing", {"standing": "GOOD"}, "AccountStandingCheck")
+        assert ctx.state["fsm_state"] == "AccountStandingCheck"
+
+    def test_set_line_after_tool_does_not_advance(self):
+        ctx = run_after_tool("set_line", {"selected_number": "555-0000"}, "LineToUpgrade")
+        assert ctx.state["fsm_state"] == "LineToUpgrade"
+
+
+class TestAfterModelLedgerAndFSM:
+    """after_model parses JSON block, merges into ledger, and advances FSM."""
+
+    def test_auth_authorized_advances(self):
+        ctx = run_after_model({"account_context": {"is_authorized": True}}, "Auth")
         assert ctx.state["ledger"]["account_context"]["is_authorized"] is True
         assert ctx.state["fsm_state"] == "AccountStandingCheck"
 
-    def test_verify_auth_failure_goes_to_end_unauthorized(self):
-        ctx = run_after_tool("verify_auth", {"is_authorized": False}, "Auth")
+    def test_auth_unauthorized_goes_to_end(self):
+        ctx = run_after_model({"account_context": {"is_authorized": False}}, "Auth")
         assert ctx.state["fsm_state"] == "EndUnauthorized"
 
-    def test_check_standing_good_advances(self):
-        ctx = run_after_tool("check_standing", {"standing": "GOOD"}, "AccountStandingCheck")
+    def test_auth_no_data_stays(self):
+        # No JSON block → no advancement
+        ctx = MockCallbackContext({"fsm_state": "Auth", "ledger": _empty_ledger()})
+        after_model(ctx, MockLlmResponse(text="Please provide your credentials."))
+        assert ctx.state["fsm_state"] == "Auth"
+
+    def test_good_standing_advances(self):
+        ctx = run_after_model({"account_context": {"standing": "GOOD"}}, "AccountStandingCheck")
         assert ctx.state["fsm_state"] == "LineToUpgrade"
 
-    def test_check_standing_bad_goes_to_end(self):
-        ctx = run_after_tool("check_standing", {"standing": "DELINQUENT"}, "AccountStandingCheck")
+    def test_bad_standing_goes_to_end(self):
+        ctx = run_after_model({"account_context": {"standing": "DELINQUENT"}}, "AccountStandingCheck")
         assert ctx.state["fsm_state"] == "EndBadStanding"
 
-    def test_set_line_advances(self):
-        ctx = run_after_tool("set_line", {"selected_number": "555-0000"}, "LineToUpgrade")
-        assert ctx.state["ledger"]["line_context"]["selected_number"] == "555-0000"
+    def test_line_set_advances(self):
+        ctx = run_after_model({"line_context": {"selected_number": "555-1234"}}, "LineToUpgrade")
+        assert ctx.state["ledger"]["line_context"]["selected_number"] == "555-1234"
         assert ctx.state["fsm_state"] == "CheckLineUpgradeEligibility"
 
-    def test_eligibility_true_advances(self):
-        ctx = run_after_tool("check_eligibility", {"is_eligible": True}, "CheckLineUpgradeEligibility")
+    def test_eligible_advances(self):
+        ctx = run_after_model({"line_context": {"is_eligible": True}}, "CheckLineUpgradeEligibility")
         assert ctx.state["fsm_state"] == "VerifyTradeIn"
 
-    def test_set_trade_in_yes_advances(self):
-        ctx = run_after_tool("set_trade_in_preference", {"wants_trade_in": True}, "VerifyTradeIn")
+    def test_not_eligible_goes_to_end(self):
+        ctx = run_after_model({"line_context": {"is_eligible": False}}, "CheckLineUpgradeEligibility")
+        assert ctx.state["fsm_state"] == "EndNotEligible"
+
+    def test_wants_trade_in_advances(self):
+        ctx = run_after_model({"trade_in_context": {"wants_trade_in": True}}, "VerifyTradeIn")
         assert ctx.state["fsm_state"] == "DeviceTradeInChecks"
 
-    def test_set_trade_in_no_skips_to_device_selection(self):
-        ctx = run_after_tool("set_trade_in_preference", {"wants_trade_in": False}, "VerifyTradeIn")
+    def test_no_trade_in_skips_to_device_selection(self):
+        ctx = run_after_model({"trade_in_context": {"wants_trade_in": False}}, "VerifyTradeIn")
         assert ctx.state["fsm_state"] == "NewUpgradeDeviceSelection"
 
-    def test_record_condition_advances(self):
-        ctx = run_after_tool("record_condition", {"trade_in_device": "iPhone 13", "final_condition": "Good"}, "DeviceTradeInChecks")
+    def test_final_condition_advances(self):
+        ctx = run_after_model({"trade_in_context": {"final_condition": "Good"}}, "DeviceTradeInChecks")
         assert ctx.state["fsm_state"] == "TradeInPricing"
 
-    def test_pricing_in_trade_in_state_updates_trade_in_context(self):
-        ledger = {"account_context": {}, "line_context": {}, "trade_in_context": {},
-                  "new_device_context": {}, "order_context": {}}
-        ctx = run_after_tool("pricing", {"final_condition": "Good", "quote_value": 200}, "TradeInPricing", ledger)
-        assert ctx.state["ledger"]["trade_in_context"]["quote_value"] == 200
+    def test_trade_in_quote_advances(self):
+        ctx = run_after_model({"trade_in_context": {"quote_value": 200}}, "TradeInPricing")
         assert ctx.state["fsm_state"] == "NewUpgradeDeviceSelection"
 
-    def test_select_device_advances(self):
-        ctx = run_after_tool("select_device", {"selection": "Pixel 9"}, "NewUpgradeDeviceSelection")
-        assert ctx.state["ledger"]["new_device_context"]["selection"] == "Pixel 9"
+    def test_device_selected_advances(self):
+        ctx = run_after_model({"new_device_context": {"selection": "iPhone 16"}}, "NewUpgradeDeviceSelection")
+        assert ctx.state["ledger"]["new_device_context"]["selection"] == "iPhone 16"
         assert ctx.state["fsm_state"] == "NewUpgradeDevicePricing"
 
-    def test_pricing_in_new_device_state_updates_new_device_context(self):
-        ledger = {"account_context": {}, "line_context": {}, "trade_in_context": {},
-                  "new_device_context": {}, "order_context": {}}
-        ctx = run_after_tool("pricing", {"selection": "Pixel 9", "price": 1000}, "NewUpgradeDevicePricing", ledger)
-        assert ctx.state["ledger"]["new_device_context"]["price"] == 1000
+    def test_device_priced_advances(self):
+        ctx = run_after_model({"new_device_context": {"price": 1000}}, "NewUpgradeDevicePricing")
         assert ctx.state["fsm_state"] == "FinalPricing"
 
-    def test_confirm_order_advances_to_process(self):
-        ctx = run_after_tool("confirm_order", {"user_confirmed": True}, "FinalPricing")
+    def test_confirmed_advances(self):
+        ctx = run_after_model({"order_context": {"user_confirmed": True}}, "FinalPricing")
         assert ctx.state["fsm_state"] == "ProcessOrder"
 
-    def test_decline_order_stays_in_final_pricing(self):
-        ctx = run_after_tool("decline_order", {"user_confirmed": False}, "FinalPricing")
+    def test_declined_stays_in_final_pricing(self):
+        ctx = run_after_model({"order_context": {"user_confirmed": False}}, "FinalPricing")
         assert ctx.state["fsm_state"] == "FinalPricing"
 
-    def test_submit_order_goes_to_end_success(self):
-        ctx = run_after_tool("submit_order", {"order_id": "ORD-999888777", "error": False}, "ProcessOrder")
+    def test_order_submitted_advances(self):
+        ctx = run_after_model({"order_context": {"order_id": "ORD-999888777"}}, "ProcessOrder")
         assert ctx.state["fsm_state"] == "EndSuccess"
+
+    def test_function_call_response_skipped(self):
+        """after_model should not advance FSM when response contains a function call."""
+        ctx = MockCallbackContext({"fsm_state": "Auth", "ledger": _empty_ledger()})
+        response = MockLlmResponse(
+            text='```json\n{"account_context": {"is_authorized": true}}\n```',
+            has_function_call=True,
+        )
+        after_model(ctx, response)
+        assert ctx.state["fsm_state"] == "Auth"  # not advanced
+
+    def test_deep_merge_preserves_existing_ledger(self):
+        """after_model merges JSON into existing ledger without overwriting unrelated keys."""
+        ledger = _empty_ledger()
+        ledger["account_context"] = {"is_authorized": True, "standing": "GOOD"}
+        ctx = run_after_model({"line_context": {"selected_number": "555-0000"}}, "LineToUpgrade", ledger)
+        # Previous account_context preserved
+        assert ctx.state["ledger"]["account_context"]["is_authorized"] is True
+        assert ctx.state["ledger"]["account_context"]["standing"] == "GOOD"
+        # New field added
+        assert ctx.state["ledger"]["line_context"]["selected_number"] == "555-0000"
 
 
 class TestDetectIntentCallback:
@@ -343,33 +437,29 @@ class TestDetectIntentCallback:
 
 
 class TestHappyPathEndToEnd:
-    """Simulate a complete happy-path run through all states without LLM."""
+    """Simulate a complete happy-path run through all states using after_model."""
 
     def test_full_flow_with_trade_in(self):
         state = fsm.initial_state
-        ledger = {
-            "account_context": {}, "line_context": {}, "trade_in_context": {},
-            "new_device_context": {}, "order_context": {},
-        }
+        ledger = _empty_ledger()
 
         steps = [
-            ("verify_auth",             {"is_authorized": True},                      "Auth"),
-            ("check_standing",          {"standing": "GOOD"},                          "AccountStandingCheck"),
-            ("set_line",                {"selected_number": "555-1234"},               "LineToUpgrade"),
-            ("check_eligibility",       {"is_eligible": True},                         "CheckLineUpgradeEligibility"),
-            ("set_trade_in_preference", {"wants_trade_in": True},                      "VerifyTradeIn"),
-            ("record_condition",        {"trade_in_device": "iPhone 13", "final_condition": "Good"}, "DeviceTradeInChecks"),
-            ("pricing",                 {"final_condition": "Good", "quote_value": 200}, "TradeInPricing"),
-            ("select_device",           {"selection": "Pixel 9"},                      "NewUpgradeDeviceSelection"),
-            ("pricing",                 {"selection": "Pixel 9", "price": 1000},       "NewUpgradeDevicePricing"),
-            ("confirm_order",           {"user_confirmed": True},                      "FinalPricing"),
-            ("submit_order",            {"order_id": "ORD-999888777", "error": False}, "ProcessOrder"),
+            ("Auth",                       {"account_context": {"is_authorized": True}},          "AccountStandingCheck"),
+            ("AccountStandingCheck",       {"account_context": {"standing": "GOOD"}},             "LineToUpgrade"),
+            ("LineToUpgrade",              {"line_context": {"selected_number": "555-1234"}},     "CheckLineUpgradeEligibility"),
+            ("CheckLineUpgradeEligibility",{"line_context": {"is_eligible": True}},               "VerifyTradeIn"),
+            ("VerifyTradeIn",              {"trade_in_context": {"wants_trade_in": True}},        "DeviceTradeInChecks"),
+            ("DeviceTradeInChecks",        {"trade_in_context": {"final_condition": "Good"}},     "TradeInPricing"),
+            ("TradeInPricing",             {"trade_in_context": {"quote_value": 200}},            "NewUpgradeDeviceSelection"),
+            ("NewUpgradeDeviceSelection",  {"new_device_context": {"selection": "iPhone 16"}},   "NewUpgradeDevicePricing"),
+            ("NewUpgradeDevicePricing",    {"new_device_context": {"price": 1000}},               "FinalPricing"),
+            ("FinalPricing",               {"order_context": {"user_confirmed": True}},           "ProcessOrder"),
+            ("ProcessOrder",               {"order_context": {"order_id": "ORD-999888777"}},      "EndSuccess"),
         ]
 
-        for tool_name, result, expected_before_state in steps:
+        for expected_before_state, json_data, expected_after_state in steps:
             assert state == expected_before_state, f"Expected {expected_before_state}, got {state}"
-            ctx = MockCallbackContext({"fsm_state": state, "ledger": ledger})
-            after_tool(MockBaseTool(tool_name), {}, ctx, result)
+            ctx = run_after_model(json_data, state, ledger)
             state = ctx.state["fsm_state"]
             ledger = ctx.state["ledger"]
 
@@ -377,41 +467,32 @@ class TestHappyPathEndToEnd:
 
     def test_full_flow_no_trade_in(self):
         state = fsm.initial_state
-        ledger = {
-            "account_context": {}, "line_context": {}, "trade_in_context": {},
-            "new_device_context": {}, "order_context": {},
-        }
+        ledger = _empty_ledger()
 
         steps = [
-            ("verify_auth",             {"is_authorized": True},          "Auth"),
-            ("check_standing",          {"standing": "GOOD"},              "AccountStandingCheck"),
-            ("set_line",                {"selected_number": "555-1234"},   "LineToUpgrade"),
-            ("check_eligibility",       {"is_eligible": True},             "CheckLineUpgradeEligibility"),
-            ("set_trade_in_preference", {"wants_trade_in": False},         "VerifyTradeIn"),
-            # Jumps directly to NewUpgradeDeviceSelection (no trade-in path)
-            ("select_device",           {"selection": "iPhone 16"},        "NewUpgradeDeviceSelection"),
-            ("pricing",                 {"selection": "iPhone 16", "price": 1000}, "NewUpgradeDevicePricing"),
-            ("confirm_order",           {"user_confirmed": True},          "FinalPricing"),
-            ("submit_order",            {"order_id": "ORD-999888777", "error": False}, "ProcessOrder"),
+            ("Auth",                       {"account_context": {"is_authorized": True}},         "AccountStandingCheck"),
+            ("AccountStandingCheck",       {"account_context": {"standing": "GOOD"}},            "LineToUpgrade"),
+            ("LineToUpgrade",              {"line_context": {"selected_number": "555-1234"}},    "CheckLineUpgradeEligibility"),
+            ("CheckLineUpgradeEligibility",{"line_context": {"is_eligible": True}},              "VerifyTradeIn"),
+            ("VerifyTradeIn",              {"trade_in_context": {"wants_trade_in": False}},      "NewUpgradeDeviceSelection"),
+            ("NewUpgradeDeviceSelection",  {"new_device_context": {"selection": "iPhone 16"}},  "NewUpgradeDevicePricing"),
+            ("NewUpgradeDevicePricing",    {"new_device_context": {"price": 1000}},              "FinalPricing"),
+            ("FinalPricing",               {"order_context": {"user_confirmed": True}},          "ProcessOrder"),
+            ("ProcessOrder",               {"order_context": {"order_id": "ORD-999888777"}},     "EndSuccess"),
         ]
 
-        for tool_name, result, expected_before_state in steps:
+        for expected_before_state, json_data, expected_after_state in steps:
             assert state == expected_before_state, f"Expected {expected_before_state}, got {state}"
-            ctx = MockCallbackContext({"fsm_state": state, "ledger": ledger})
-            after_tool(MockBaseTool(tool_name), {}, ctx, result)
+            ctx = run_after_model(json_data, state, ledger)
             state = ctx.state["fsm_state"]
             ledger = ctx.state["ledger"]
 
         assert state == "EndSuccess"
 
     def test_error_path_unauthorized(self):
-        ctx = run_after_tool("verify_auth", {"is_authorized": False}, "Auth")
+        ctx = run_after_model({"account_context": {"is_authorized": False}}, "Auth")
         assert ctx.state["fsm_state"] == "EndUnauthorized"
 
     def test_error_path_bad_standing(self):
-        state = "AccountStandingCheck"
-        ledger = {"account_context": {}, "line_context": {}, "trade_in_context": {},
-                  "new_device_context": {}, "order_context": {}}
-        ctx = MockCallbackContext({"fsm_state": state, "ledger": ledger})
-        after_tool(MockBaseTool("check_standing"), {}, ctx, {"standing": "DELINQUENT"})
+        ctx = run_after_model({"account_context": {"standing": "DELINQUENT"}}, "AccountStandingCheck")
         assert ctx.state["fsm_state"] == "EndBadStanding"

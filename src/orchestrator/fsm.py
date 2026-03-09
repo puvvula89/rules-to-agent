@@ -1,61 +1,112 @@
 import yaml
-from typing import Optional
+import logging
 from simpleeval import simple_eval
 from transitions import Machine
 
+logger = logging.getLogger(__name__)
+
+
+_LEDGER_KEYS = ['account_context', 'line_context', 'trade_in_context', 'new_device_context', 'order_context']
+
+
+def _make_condition(condition_str: str):
+    """Return a condition function that evaluates condition_str against context kwarg.
+
+    Normalizes context so all ledger keys are present (safe subscript access in conditions).
+    simpleeval blocks {} dict literals, so conditions use context['key'].get(...) syntax.
+    """
+    def condition(event_data):
+        raw = event_data.kwargs.get('context', {})
+        # Ensure all ledger keys exist so condition strings can use subscript access safely
+        context = {k: raw.get(k, {}) for k in _LEDGER_KEYS}
+        try:
+            return bool(simple_eval(condition_str, names={'context': context}))
+        except Exception as e:
+            logger.warning(f"[FSM Error] '{condition_str}': {e}")
+            return False
+    condition.__name__ = f"cond_{condition_str[:30]}"
+    return condition
+
+
+class FlowController:
+    """Model object for the transitions Machine. Holds state and memory-wipe callbacks."""
+
+    def clear_line_memory(self, event_data):
+        ledger = event_data.kwargs.get('ledger', {})
+        for k in ['line_context', 'trade_in_context', 'new_device_context', 'order_context']:
+            ledger[k] = {}
+
+    def clear_trade_in_memory(self, event_data):
+        ledger = event_data.kwargs.get('ledger', {})
+        for k in ['trade_in_context', 'order_context']:
+            ledger[k] = {}
+
+    def clear_new_device_memory(self, event_data):
+        ledger = event_data.kwargs.get('ledger', {})
+        for k in ['new_device_context', 'order_context']:
+            ledger[k] = {}
+
 
 class WorkflowFSM:
+    """Stateless FSM: set state externally, fire advance, read new state."""
+
     def __init__(self, yaml_path: str):
         with open(yaml_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
-        self.states = list(self.config['states'].keys())
-        self.initial_state = self.config['initial_state']
+        self.initial_state = self.config['initial']
 
-        # transitions.Machine validates all next_state values are registered states,
-        # catching YAML authoring errors at startup.
-        self.machine = Machine(model=self, states=self.states, initial=self.initial_state)
+        # Keep state metadata (objective, extract_variables) in a fast lookup dict.
+        self._state_meta = {s['name']: s for s in self.config['states']}
 
-    def evaluate(self, current_state: str, ledger: dict, intent_override: Optional[str] = None) -> str:
-        """
-        Evaluates current_state against ledger and returns next_state.
-        If intent_override is provided, checks global transitions first and
-        wipes the specified ledger keys in-place before returning.
-        """
-        # 1. Global Transitions (change-of-mind)
-        if intent_override:
-            for global_tx in self.config.get('global_transitions', []):
-                if global_tx['intent'] == intent_override:
-                    print(f"[FSM] Global intent '{intent_override}'. Wiping: {global_tx.get('clear_memory')}")
-                    for key in global_tx.get('clear_memory', []):
-                        ledger[key] = {}
-                    return global_tx['next_state']
+        self.controller = FlowController()
 
-        # 2. Local State Evaluation
-        current_state_config = self.config['states'].get(current_state, {})
-        transitions = current_state_config.get('transitions', [])
+        # Pre-process transitions: replace condition_string with a dynamic method on controller.
+        # transitions 0.9.x State/Transition don't accept arbitrary **kwargs.
+        processed_transitions = []
+        for i, tx in enumerate(self.config['transitions']):
+            tx_copy = dict(tx)
+            cond_str = tx_copy.pop('condition_string', None)
+            if cond_str:
+                method_name = f'_cond_{i}'
+                setattr(self.controller, method_name, _make_condition(cond_str))
+                tx_copy['conditions'] = method_name
+            processed_transitions.append(tx_copy)
 
-        if not transitions:
-            # Terminal state — stay
-            return current_state
+        # Pass only state names to Machine (strip objective/extract_variables).
+        state_names = [s['name'] for s in self.config['states']]
 
-        eval_context = {k: ledger.get(k, {}) for k in [
-            "account_context", "line_context", "trade_in_context",
-            "new_device_context", "order_context"
-        ]}
+        self.machine = Machine(
+            model=self.controller,
+            states=state_names,
+            transitions=processed_transitions,
+            initial=self.initial_state,
+            send_event=True,           # EventData passed to all callbacks
+            ignore_invalid_triggers=True,  # return False instead of raising on terminal states
+        )
 
-        for tx in transitions:
-            condition = tx['condition']
+    def evaluate(self, current_state: str, context: dict) -> str:
+        """Set state, fire advance, return new state (or current if no transition fires)."""
+        self.machine.set_state(current_state, model=self.controller)
+        try:
+            self.controller.advance(context=context)
+        except Exception:
+            pass  # safety net
+        return self.controller.state
+
+    def fire_intent(self, current_state: str, intent: str, ledger: dict) -> str:
+        """Fire a global intent trigger; clears relevant ledger keys in-place."""
+        self.machine.set_state(current_state, model=self.controller)
+        trigger = getattr(self.controller, f'intent_{intent}', None)
+        if trigger:
             try:
-                if simple_eval(condition, names=eval_context):
-                    next_state = tx['next_state']
-                    print(f"[FSM] '{condition}' → {next_state}")
-                    return next_state
+                trigger(ledger=ledger)
             except Exception as e:
-                print(f"[FSM Error] Could not evaluate '{condition}': {e}")
-
-        print(f"[FSM] No conditions met. Staying in {current_state}.")
-        return current_state
+                logger.warning(f"[FSM] Intent trigger failed: {e}")
+        return self.controller.state
 
     def get_objective(self, state_name: str) -> str:
-        return self.config['states'].get(state_name, {}).get('objective', "No objective found.")
+        return self._state_meta.get(state_name, {}).get('objective', 'No objective found.')
+
+    def get_extract_variables(self, state_name: str) -> list:
+        return self._state_meta.get(state_name, {}).get('extract_variables', [])

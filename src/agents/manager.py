@@ -1,5 +1,7 @@
 import os
+import re
 import json
+import logging
 
 from google.adk import Agent
 from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
@@ -10,8 +12,10 @@ from google.adk.tools.tool_context import ToolContext
 
 from orchestrator.fsm import WorkflowFSM
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
-# Module-level constants (not re-created per LLM call)
+# Module-level constants
 # ---------------------------------------------------------------------------
 
 STATE_TOOLS = {
@@ -29,21 +33,6 @@ STATE_TOOLS = {
 }
 
 GLOBAL_INTENT_STATES = set(STATE_TOOLS.keys()) - {"Auth", "AccountStandingCheck"}
-
-TOOL_LEDGER_MAP = {
-    "verify_auth":             "account_context",
-    "check_standing":          "account_context",
-    "set_line":                "line_context",
-    "check_eligibility":       "line_context",
-    "set_trade_in_preference": "trade_in_context",
-    "record_condition":        "trade_in_context",
-    "pricing":                 None,   # determined by current FSM state
-    "select_device":           "new_device_context",
-    "confirm_order":           "order_context",
-    "decline_order":           "order_context",
-    "submit_order":            "order_context",
-    "detect_intent":           None,   # triggers global FSM transition
-}
 
 
 def _empty_ledger() -> dict:
@@ -64,6 +53,49 @@ fsm = WorkflowFSM(os.path.abspath("config/phone_upgrade.yaml"))
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _parse_mcp_response(tool_response) -> dict:
+    """Unwrap MCP envelope and return parsed dict."""
+    try:
+        if isinstance(tool_response, dict):
+            content_list = tool_response.get("content")
+            if isinstance(content_list, list) and content_list:
+                first = content_list[0]
+                if isinstance(first, dict) and "text" in first:
+                    return json.loads(first["text"])
+            return tool_response
+        elif isinstance(tool_response, list):
+            return json.loads(tool_response[0].text)
+        elif isinstance(tool_response, str):
+            return json.loads(tool_response)
+    except Exception as e:
+        logger.warning(f"[Hook Warning] Could not parse tool response: {e}")
+    return {}
+
+
+def _extract_json_block(text: str) -> dict:
+    """Parse the first ```json ... ``` block from LLM response text."""
+    match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def _deep_merge(base: dict, override: dict):
+    """Recursively merge override into base in-place."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
+# ---------------------------------------------------------------------------
 # Callbacks
 # ---------------------------------------------------------------------------
 
@@ -73,6 +105,7 @@ def before_model(
 ):
     current_state = callback_context.state.get("fsm_state", fsm.initial_state)
 
+    # Tool filtering (safety guardrail — unchanged)
     allowed_tools = list(STATE_TOOLS.get(current_state, []))
     if current_state in GLOBAL_INTENT_STATES:
         allowed_tools = allowed_tools + ["detect_intent"]
@@ -80,20 +113,45 @@ def before_model(
     if llm_request.config and llm_request.config.tools:
         for t in llm_request.config.tools:
             if getattr(t, "function_declarations", None):
+                before = [f.name for f in t.function_declarations]
                 t.function_declarations = [
                     f for f in t.function_declarations if f.name in allowed_tools
                 ]
+                after = [f.name for f in t.function_declarations]
+                logger.debug(f"[Filter] state={current_state} tools: {before} → {after}")
 
+    # Dynamic instruction: objective + structured JSON output requirement
     objective = fsm.get_objective(current_state)
+    extract_vars = fsm.get_extract_variables(current_state)
+
+    if extract_vars:
+        # Build a minimal example showing the expected nested JSON structure
+        example_parts = {}
+        for var_path in extract_vars:
+            parts = var_path.split('.')
+            if len(parts) == 2:
+                ctx_key, field = parts
+                example_parts.setdefault(ctx_key, {})[field] = "<value>"
+        example_json = json.dumps(example_parts)
+
+        json_instruction = (
+            f'2. After calling the tool, YOU MUST include in your response a JSON block '
+            f'(wrapped in ```json ... ```) containing EXACTLY these nested fields:\n'
+            f'   {extract_vars}\n'
+            f'   Example: {example_json}\n'
+        )
+    else:
+        json_instruction = '2. No JSON block required for this state.\n'
+
     dynamic_instruction = (
-        f'CRITICAL RULES (FSM Guardrail):\n'
-        f'Your CURRENT OBJECTIVE is strictly defined by the backend state machine:\n'
-        f'"{objective}"\n\n'
-        f'1. Do NOT decide what to do next. Only collect the data required by the tool provided to you.\n'
-        f'2. If you have the data, call the explicit tool provided.\n'
-        f'3. If the user changes their mind about a previous choice, call '
-        f'detect_intent(intent) with one of: change_line, change_trade_in_device, change_new_device.'
+        f'OBJECTIVE: {objective}\n\n'
+        f'RULES:\n'
+        f'1. Use the provided tool(s) to collect the required data.\n'
+        f'{json_instruction}'
+        f'3. If the user changes their mind, call detect_intent(intent) with one of: '
+        f'change_line, change_trade_in_device, change_new_device.'
     )
+
     if llm_request.config:
         llm_request.config.system_instruction = dynamic_instruction
 
@@ -106,47 +164,53 @@ def after_tool(
     tool_context: ToolContext,
     tool_response: dict,
 ):
-    # Parse tool_response safely — ADK may deliver dict, list[TextContent], or str
-    try:
-        if isinstance(tool_response, dict):
-            result_data = tool_response
-        elif isinstance(tool_response, list):
-            result_data = json.loads(tool_response[0].text)
-        elif isinstance(tool_response, str):
-            result_data = json.loads(tool_response)
-        else:
-            result_data = {}
-    except Exception as e:
-        print(f"[Hook Warning] Could not parse tool result: {e}, type: {type(tool_response)}")
-        result_data = {}
-
-    ledger = tool_context.state.get("ledger", _empty_ledger())
-    current_state = tool_context.state.get("fsm_state", fsm.initial_state)
-
-    # detect_intent: global FSM transition (wipes ledger keys in-place), early return
-    if tool.name == "detect_intent":
-        intent = result_data.get("detected_intent", "")
-        if intent:
-            new_state = fsm.evaluate(current_state, ledger, intent_override=intent)
-            tool_context.state["fsm_state"] = new_state
-            tool_context.state["ledger"] = ledger  # ledger may have been wiped
+    """Only handles detect_intent. All other tool results are handled by after_model."""
+    if tool.name != "detect_intent":
         return tool_response
 
-    # Determine ledger context key
-    if tool.name == "pricing":
-        context_key = "trade_in_context" if current_state == "TradeInPricing" else "new_device_context"
-    else:
-        context_key = TOOL_LEDGER_MAP.get(tool.name)
-
-    if context_key and isinstance(result_data, dict):
-        ledger.setdefault(context_key, {}).update(result_data)
-        print(f"[Ledger] Updated {context_key}: {ledger[context_key]}")
-
-    tool_context.state["ledger"] = ledger
-    new_state = fsm.evaluate(current_state, ledger)
-    tool_context.state["fsm_state"] = new_state
+    result_data = _parse_mcp_response(tool_response)
+    intent = result_data.get("detected_intent", "")
+    if intent:
+        ledger = tool_context.state.get("ledger", _empty_ledger())
+        current_state = tool_context.state.get("fsm_state", fsm.initial_state)
+        new_state = fsm.fire_intent(current_state, intent, ledger)
+        tool_context.state["fsm_state"] = new_state
+        tool_context.state["ledger"] = ledger  # ledger keys cleared in-place by fire_intent
+        logger.info(f"[FSM] Intent '{intent}': {current_state} → {new_state}")
 
     return tool_response
+
+
+def after_model(
+    callback_context: CallbackContext,
+    llm_response,
+):
+    """
+    Parses structured JSON from LLM final text responses, merges into ledger,
+    and advances the FSM. Skips intermediate function-call responses.
+    """
+    # Skip if this response contains function calls (tool is being called — not final yet)
+    parts = getattr(getattr(llm_response, 'content', None), 'parts', []) or []
+    has_function_calls = any(getattr(p, 'function_call', None) for p in parts)
+    if has_function_calls:
+        return None
+
+    text = "".join(p.text for p in parts if getattr(p, 'text', None))
+    json_data = _extract_json_block(text)
+
+    if not json_data:
+        return None  # No JSON block — conversational reply or terminal state
+
+    ledger = callback_context.state.get("ledger", _empty_ledger())
+    _deep_merge(ledger, json_data)
+    callback_context.state["ledger"] = ledger
+
+    current_state = callback_context.state.get("fsm_state", fsm.initial_state)
+    new_state = fsm.evaluate(current_state, ledger)
+    callback_context.state["fsm_state"] = new_state
+    logger.info(f"[FSM] {current_state} → {new_state} | extracted: {json_data}")
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -170,4 +234,5 @@ root_agent = Agent(
     tools=[mcp_toolset],
     before_model_callback=before_model,
     after_tool_callback=after_tool,
+    after_model_callback=after_model,
 )
