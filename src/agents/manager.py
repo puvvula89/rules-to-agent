@@ -14,27 +14,6 @@ from orchestrator.fsm import WorkflowFSM
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
-
-STATE_TOOLS = {
-    "Auth":                        ["verify_auth"],
-    "AccountStandingCheck":        ["check_standing"],
-    "LineToUpgrade":               ["set_line"],
-    "CheckLineUpgradeEligibility": ["check_eligibility"],
-    "VerifyTradeIn":               ["set_trade_in_preference"],
-    "DeviceTradeInChecks":         ["record_condition"],
-    "TradeInPricing":              ["pricing"],
-    "NewUpgradeDeviceSelection":   ["select_device"],
-    "NewUpgradeDevicePricing":     ["pricing"],
-    "FinalPricing":                ["confirm_order", "decline_order"],
-    "ProcessOrder":                ["submit_order"],
-}
-
-GLOBAL_INTENT_STATES = set(STATE_TOOLS.keys()) - {"Auth", "AccountStandingCheck"}
-
-
 def _empty_ledger() -> dict:
     return {
         "account_context": {},
@@ -104,21 +83,6 @@ def before_model(
     llm_request: LlmRequest,
 ):
     current_state = callback_context.state.get("fsm_state", fsm.initial_state)
-
-    # Tool filtering (safety guardrail — unchanged)
-    allowed_tools = list(STATE_TOOLS.get(current_state, []))
-    if current_state in GLOBAL_INTENT_STATES:
-        allowed_tools = allowed_tools + ["detect_intent"]
-
-    if llm_request.config and llm_request.config.tools:
-        for t in llm_request.config.tools:
-            if getattr(t, "function_declarations", None):
-                before = [f.name for f in t.function_declarations]
-                t.function_declarations = [
-                    f for f in t.function_declarations if f.name in allowed_tools
-                ]
-                after = [f.name for f in t.function_declarations]
-                logger.debug(f"[Filter] state={current_state} tools: {before} → {after}")
 
     # Dynamic instruction: objective + structured JSON output requirement
     objective = fsm.get_objective(current_state)

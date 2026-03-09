@@ -207,9 +207,7 @@ class TestMCPServer:
 # Callback pipeline simulation (no LLM)
 # ---------------------------------------------------------------------------
 
-from agents.manager import (
-    before_model, after_tool, after_model, fsm, STATE_TOOLS, GLOBAL_INTENT_STATES
-)
+from agents.manager import before_model, after_tool, after_model, fsm
 
 ALL_TOOL_NAMES = [
     "verify_auth", "check_standing", "set_line", "check_eligibility",
@@ -248,31 +246,13 @@ def run_after_model(json_data: dict, state: str, ledger: dict = None) -> MockCal
     return ctx
 
 
-class TestBeforeModelFiltering:
-    def test_auth_state_only_sees_verify_auth(self):
-        assert visible_tools(run_before_model("Auth")) == ["verify_auth"]
+class TestBeforeModelInstruction:
+    """LLM sees all tools; before_model only injects the dynamic system instruction."""
 
-    def test_account_standing_only_sees_check_standing(self):
-        assert visible_tools(run_before_model("AccountStandingCheck")) == ["check_standing"]
-
-    def test_verify_trade_in_sees_tool_and_detect_intent(self):
-        tools = visible_tools(run_before_model("VerifyTradeIn"))
-        assert "set_trade_in_preference" in tools
-        assert "detect_intent" in tools
-        assert "verify_auth" not in tools
-
-    def test_final_pricing_sees_confirm_decline_and_detect_intent(self):
-        tools = visible_tools(run_before_model("FinalPricing"))
-        assert set(tools) == {"confirm_order", "decline_order", "detect_intent"}
-
-    def test_process_order_sees_submit_and_detect_intent(self):
-        tools = visible_tools(run_before_model("ProcessOrder"))
-        assert "submit_order" in tools
-        assert "detect_intent" in tools
-
-    def test_auth_does_not_see_detect_intent(self):
-        tools = visible_tools(run_before_model("Auth"))
-        assert "detect_intent" not in tools
+    def test_all_tools_remain_visible(self):
+        # No filtering — all tools passed through unchanged
+        req = run_before_model("Auth")
+        assert visible_tools(req) == ALL_TOOL_NAMES
 
     def test_system_instruction_contains_objective(self):
         req = run_before_model("Auth")
@@ -288,7 +268,7 @@ class TestBeforeModelFiltering:
 
     def test_system_instruction_contains_json_instruction(self):
         req = run_before_model("AccountStandingCheck")
-        assert "```json" in req.config.system_instruction or "json" in req.config.system_instruction
+        assert "json" in req.config.system_instruction
 
 
 class TestAfterToolDoesNotAdvanceFSM:
