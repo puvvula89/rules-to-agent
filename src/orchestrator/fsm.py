@@ -116,3 +116,14 @@ class WorkflowFSM:
 
     def get_extract_variables(self, state_name: str) -> list:
         return self._state_meta.get(state_name, {}).get('extract_variables', [])
+
+    def get_all_extract_variables(self) -> list:
+        """Return all extract_variable paths across all states (deduplicated, ordered)."""
+        seen = set()
+        result = []
+        for state in self.config['states']:
+            for var in state.get('extract_variables', []):
+                if var not in seen:
+                    seen.add(var)
+                    result.append(var)
+        return result

@@ -207,12 +207,13 @@ class TestMCPServer:
 # Callback pipeline simulation (no LLM)
 # ---------------------------------------------------------------------------
 
-from agents.manager import before_model, after_tool, after_model, fsm
+from agents.manager import before_model, after_tool, after_model, fsm_advance, fsm
 
 ALL_TOOL_NAMES = [
     "verify_auth", "check_standing", "set_line", "check_eligibility",
     "set_trade_in_preference", "record_condition", "pricing",
     "select_device", "confirm_order", "decline_order", "submit_order", "detect_intent",
+    "fsm_advance",
 ]
 
 
@@ -263,12 +264,14 @@ class TestBeforeModelInstruction:
         assert "detect_intent" in req.config.system_instruction
 
     def test_system_instruction_contains_extract_variables(self):
+        # New prompt embeds extract_variables as a fsm_advance example (nested JSON format)
         req = run_before_model("Auth")
-        assert "account_context.is_authorized" in req.config.system_instruction
+        assert "is_authorized" in req.config.system_instruction
 
-    def test_system_instruction_contains_json_instruction(self):
+    def test_system_instruction_contains_fsm_advance_instruction(self):
+        # New prompt tells LLM to call fsm_advance after each domain tool
         req = run_before_model("AccountStandingCheck")
-        assert "json" in req.config.system_instruction
+        assert "fsm_advance" in req.config.system_instruction
 
 
 class TestAfterToolDoesNotAdvanceFSM:
@@ -414,6 +417,115 @@ class TestDetectIntentCallback:
         assert ctx.state["ledger"]["line_context"] == {}
         assert ctx.state["ledger"]["trade_in_context"] == {}
         assert ctx.state["ledger"]["new_device_context"] == {}
+
+
+def run_fsm_advance(data: dict, state: str, ledger: dict = None) -> MockCallbackContext:
+    """Run fsm_advance tool and return the updated context."""
+    ctx = MockCallbackContext({"fsm_state": state, "ledger": ledger or _empty_ledger()})
+    fsm_advance(data, ctx)
+    return ctx
+
+
+class TestFsmAdvanceTool:
+    """fsm_advance tool: updates ledger, normalises booleans, advances FSM, returns next objective."""
+
+    def test_auth_authorized_advances(self):
+        ctx = run_fsm_advance({"account_context": {"is_authorized": True}}, "Auth")
+        assert ctx.state["fsm_state"] == "AccountStandingCheck"
+        assert ctx.state["ledger"]["account_context"]["is_authorized"] is True
+
+    def test_auth_string_true_normalized_and_advances(self):
+        # LLM sometimes returns "true" as string — must be normalized to bool
+        ctx = run_fsm_advance({"account_context": {"is_authorized": "true"}}, "Auth")
+        assert ctx.state["ledger"]["account_context"]["is_authorized"] is True
+        assert ctx.state["fsm_state"] == "AccountStandingCheck"
+
+    def test_auth_string_false_normalized(self):
+        ctx = run_fsm_advance({"account_context": {"is_authorized": "false"}}, "Auth")
+        assert ctx.state["ledger"]["account_context"]["is_authorized"] is False
+        assert ctx.state["fsm_state"] == "EndUnauthorized"
+
+    def test_auth_unauthorized_goes_to_end(self):
+        ctx = run_fsm_advance({"account_context": {"is_authorized": False}}, "Auth")
+        assert ctx.state["fsm_state"] == "EndUnauthorized"
+
+    def test_good_standing_advances(self):
+        ctx = run_fsm_advance({"account_context": {"standing": "GOOD"}}, "AccountStandingCheck")
+        assert ctx.state["fsm_state"] == "LineToUpgrade"
+
+    def test_bad_standing_goes_to_end(self):
+        ctx = run_fsm_advance({"account_context": {"standing": "DELINQUENT"}}, "AccountStandingCheck")
+        assert ctx.state["fsm_state"] == "EndBadStanding"
+
+    def test_line_set_advances(self):
+        ctx = run_fsm_advance({"line_context": {"selected_number": "555-1234"}}, "LineToUpgrade")
+        assert ctx.state["fsm_state"] == "CheckLineUpgradeEligibility"
+
+    def test_eligible_advances(self):
+        ctx = run_fsm_advance({"line_context": {"is_eligible": True}}, "CheckLineUpgradeEligibility")
+        assert ctx.state["fsm_state"] == "VerifyTradeIn"
+
+    def test_not_eligible_goes_to_end(self):
+        ctx = run_fsm_advance({"line_context": {"is_eligible": False}}, "CheckLineUpgradeEligibility")
+        assert ctx.state["fsm_state"] == "EndNotEligible"
+
+    def test_wants_trade_in_advances(self):
+        ctx = run_fsm_advance({"trade_in_context": {"wants_trade_in": True}}, "VerifyTradeIn")
+        assert ctx.state["fsm_state"] == "DeviceTradeInChecks"
+
+    def test_no_trade_in_skips_to_device_selection(self):
+        ctx = run_fsm_advance({"trade_in_context": {"wants_trade_in": False}}, "VerifyTradeIn")
+        assert ctx.state["fsm_state"] == "NewUpgradeDeviceSelection"
+
+    def test_returns_next_objective(self):
+        ctx = MockCallbackContext({"fsm_state": "Auth", "ledger": _empty_ledger()})
+        result = fsm_advance({"account_context": {"is_authorized": True}}, ctx)
+        assert result["workflow_advanced_to"] == "AccountStandingCheck"
+        assert "standing" in result["next_objective"].lower()
+        assert "account_context.standing" in result["data_still_needed"]
+
+    def test_deep_merge_preserves_existing_ledger(self):
+        ledger = _empty_ledger()
+        ledger["account_context"] = {"is_authorized": True, "standing": "GOOD"}
+        ctx = run_fsm_advance({"line_context": {"selected_number": "555-0000"}}, "LineToUpgrade", ledger)
+        assert ctx.state["ledger"]["account_context"]["is_authorized"] is True
+        assert ctx.state["ledger"]["line_context"]["selected_number"] == "555-0000"
+
+    def test_slot_fill_two_steps_in_one_call(self):
+        """If user provides data for two states at once, fsm_advance advances one step.
+        Caller (LLM) must call fsm_advance again for each subsequent step."""
+        ledger = _empty_ledger()
+        ledger["account_context"]["is_authorized"] = True  # Auth already done
+
+        ctx = run_fsm_advance({"account_context": {"standing": "GOOD"}}, "AccountStandingCheck", ledger)
+        assert ctx.state["fsm_state"] == "LineToUpgrade"
+
+    def test_full_happy_path_via_fsm_advance(self):
+        state = fsm.initial_state
+        ledger = _empty_ledger()
+
+        steps = [
+            ("Auth",                        {"account_context": {"is_authorized": True}},         "AccountStandingCheck"),
+            ("AccountStandingCheck",        {"account_context": {"standing": "GOOD"}},            "LineToUpgrade"),
+            ("LineToUpgrade",               {"line_context": {"selected_number": "555-1234"}},    "CheckLineUpgradeEligibility"),
+            ("CheckLineUpgradeEligibility", {"line_context": {"is_eligible": True}},              "VerifyTradeIn"),
+            ("VerifyTradeIn",               {"trade_in_context": {"wants_trade_in": True}},       "DeviceTradeInChecks"),
+            ("DeviceTradeInChecks",         {"trade_in_context": {"final_condition": "Good"}},    "TradeInPricing"),
+            ("TradeInPricing",              {"trade_in_context": {"quote_value": 200}},           "NewUpgradeDeviceSelection"),
+            ("NewUpgradeDeviceSelection",   {"new_device_context": {"selection": "iPhone 16"}},   "NewUpgradeDevicePricing"),
+            ("NewUpgradeDevicePricing",     {"new_device_context": {"price": 1000}},              "FinalPricing"),
+            ("FinalPricing",                {"order_context": {"user_confirmed": True}},           "ProcessOrder"),
+            ("ProcessOrder",                {"order_context": {"order_id": "ORD-999888777"}},     "EndSuccess"),
+        ]
+
+        for expected_before, data, expected_after in steps:
+            assert state == expected_before, f"Expected {expected_before}, got {state}"
+            ctx = run_fsm_advance(data, state, ledger)
+            state = ctx.state["fsm_state"]
+            ledger = ctx.state["ledger"]
+            assert state == expected_after, f"Expected {expected_after}, got {state}"
+
+        assert state == "EndSuccess"
 
 
 class TestHappyPathEndToEnd:

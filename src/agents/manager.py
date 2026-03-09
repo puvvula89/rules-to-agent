@@ -64,6 +64,68 @@ def _deep_merge(base: dict, override: dict):
             base[key] = value
 
 
+def _normalize_booleans(obj):
+    """Recursively convert string 'true'/'false' to Python booleans.
+
+    The LLM occasionally emits boolean values as strings ("true"/"false").
+    FSM conditions use == True / == False so string values cause silent failures.
+    """
+    if isinstance(obj, dict):
+        return {k: _normalize_booleans(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_normalize_booleans(v) for v in obj]
+    if isinstance(obj, str):
+        if obj.lower() == 'true':
+            return True
+        if obj.lower() == 'false':
+            return False
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# fsm_advance — internal ADK tool (LLM calls this after each domain tool)
+# ---------------------------------------------------------------------------
+
+def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
+    """Advance the workflow after collecting data from a domain tool.
+
+    Call this after EVERY domain tool call, passing the structured data you collected.
+    It updates the workflow state and tells you what to do next.
+
+    Args:
+        data: Structured data from the tool response, nested by context group. Examples:
+              {"account_context": {"is_authorized": true}}
+              {"account_context": {"standing": "GOOD"}}
+              {"line_context": {"selected_number": "555-1234"}}
+              {"line_context": {"is_eligible": true}}
+              {"trade_in_context": {"wants_trade_in": false}}
+              {"trade_in_context": {"final_condition": "Good", "quote_value": 200}}
+              {"new_device_context": {"selection": "iPhone 16", "price": 1000}}
+              {"order_context": {"order_id": "ORD-123", "error": false}}
+
+    Returns:
+        workflow_advanced_to: the new FSM state name
+        next_objective: what you must accomplish next
+        data_still_needed: list of data fields still required for the next step
+    """
+    ledger = tool_context.state.get("ledger", {})
+    normalized = _normalize_booleans(data)
+    _deep_merge(ledger, normalized)
+    tool_context.state["ledger"] = ledger
+
+    current_state = tool_context.state.get("fsm_state", fsm.initial_state)
+    new_state = fsm.evaluate(current_state, ledger)
+    tool_context.state["fsm_state"] = new_state
+
+    logger.info(f"[FSM] {current_state} → {new_state} | data: {data}")
+
+    return {
+        "workflow_advanced_to": new_state,
+        "next_objective": fsm.get_objective(new_state),
+        "data_still_needed": fsm.get_extract_variables(new_state),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Callbacks
 # ---------------------------------------------------------------------------
@@ -74,36 +136,38 @@ def before_model(
 ):
     current_state = callback_context.state.get("fsm_state", fsm.initial_state)
 
-    # Dynamic instruction: objective + structured JSON output requirement
     objective = fsm.get_objective(current_state)
     extract_vars = fsm.get_extract_variables(current_state)
 
-    if extract_vars:
-        # Build a minimal example showing the expected nested JSON structure
-        example_parts = {}
-        for var_path in extract_vars:
-            parts = var_path.split('.')
-            if len(parts) == 2:
-                ctx_key, field = parts
-                example_parts.setdefault(ctx_key, {})[field] = "<value>"
-        example_json = json.dumps(example_parts)
-
-        json_instruction = (
-            f'2. After calling the tool, YOU MUST include in your response a JSON block '
-            f'(wrapped in ```json ... ```) containing EXACTLY these nested fields:\n'
-            f'   {extract_vars}\n'
-            f'   Example: {example_json}\n'
-        )
-    else:
-        json_instruction = '2. No JSON block required for this state.\n'
+    # Build a concrete example of what to pass to fsm_advance for the current step
+    example_data: dict = {}
+    for var_path in extract_vars:
+        parts = var_path.split('.')
+        if len(parts) == 2:
+            ctx_key, field = parts
+            example_data.setdefault(ctx_key, {})[field] = "<value>"
+    example_json = json.dumps(example_data)
 
     dynamic_instruction = (
-        f'OBJECTIVE: {objective}\n\n'
-        f'RULES:\n'
-        f'1. Use the provided tool(s) to collect the required data.\n'
-        f'{json_instruction}'
-        f'3. If the user changes their mind, call detect_intent(intent) with one of: '
-        f'change_line, change_trade_in_device, change_new_device.'
+        'You are a warm, helpful Telco Customer Service AI assisting with a phone upgrade.\n\n'
+
+        f'CURRENT STATE: {current_state}\n'
+        f'CURRENT OBJECTIVE: {objective}\n\n'
+
+        'WORKFLOW RULES:\n'
+        '1. Call the appropriate domain tool(s) to fulfill the current objective.\n'
+        f'2. After each domain tool call, call fsm_advance with the data you collected.\n'
+        f'   Example for this step: fsm_advance(data={example_json})\n'
+        '3. fsm_advance returns the next objective and what data is still needed.\n'
+        '   - If you already have all needed information from the conversation, '
+        'call the next tool immediately — do NOT ask the user for info you already have.\n'
+        '   - If you need information the user has not yet provided, ask naturally.\n'
+        '4. Continue this loop (tool → fsm_advance → tool → fsm_advance) until you '
+        'reach a point where you must ask the user something.\n'
+        '5. Keep all responses warm, concise, and conversational. Never sound robotic.\n\n'
+
+        'CHANGE OF MIND — if the user changes a previous choice, call detect_intent(intent) '
+        'with one of: change_line, change_trade_in_device, change_new_device.'
     )
 
     if llm_request.config:
@@ -118,7 +182,7 @@ def after_tool(
     tool_context: ToolContext,
     tool_response: dict,
 ):
-    """Only handles detect_intent. All other tool results are handled by after_model."""
+    """Handles detect_intent for change-of-mind flows. fsm_advance is handled by the tool itself."""
     if tool.name != "detect_intent":
         return tool_response
 
@@ -129,7 +193,7 @@ def after_tool(
         current_state = tool_context.state.get("fsm_state", fsm.initial_state)
         new_state = fsm.fire_intent(current_state, intent, ledger)
         tool_context.state["fsm_state"] = new_state
-        tool_context.state["ledger"] = ledger  # ledger keys cleared in-place by fire_intent
+        tool_context.state["ledger"] = ledger
         logger.info(f"[FSM] Intent '{intent}': {current_state} → {new_state}")
 
     return tool_response
@@ -140,29 +204,35 @@ def after_model(
     llm_response,
 ):
     """
-    Parses structured JSON from LLM final text responses, merges into ledger,
-    and advances the FSM. Skips intermediate function-call responses.
+    Fallback: parses ```json``` block from LLM text and advances FSM.
+
+    Primary flow uses fsm_advance tool. This fires for terminal states or if
+    the LLM produces a JSON block instead of calling fsm_advance.
     """
-    # Skip if this response contains function calls (tool is being called — not final yet)
     parts = getattr(getattr(llm_response, 'content', None), 'parts', []) or []
     has_function_calls = any(getattr(p, 'function_call', None) for p in parts)
     if has_function_calls:
         return None
 
     text = "".join(p.text for p in parts if getattr(p, 'text', None))
-    json_data = _extract_json_block(text)
+    json_data = _normalize_booleans(_extract_json_block(text))
 
     if not json_data:
-        return None  # No JSON block — conversational reply or terminal state
+        return None
 
     ledger = callback_context.state.get("ledger", {})
     _deep_merge(ledger, json_data)
     callback_context.state["ledger"] = ledger
 
     current_state = callback_context.state.get("fsm_state", fsm.initial_state)
-    new_state = fsm.evaluate(current_state, ledger)
-    callback_context.state["fsm_state"] = new_state
-    logger.info(f"[FSM] {current_state} → {new_state} | extracted: {json_data}")
+    while True:
+        new_state = fsm.evaluate(current_state, ledger)
+        if new_state == current_state:
+            break
+        logger.info(f"[FSM] {current_state} → {new_state}")
+        current_state = new_state
+    callback_context.state["fsm_state"] = current_state
+    logger.info(f"[FSM] final state: {current_state} | extracted: {json_data}")
 
     return None
 
@@ -185,7 +255,7 @@ root_agent = Agent(
     name="TelcoManager",
     model="gemini-2.5-pro",
     instruction="You are a helpful Telco Customer Service AI.",
-    tools=[mcp_toolset],
+    tools=[mcp_toolset, fsm_advance],
     before_model_callback=before_model,
     after_tool_callback=after_tool,
     after_model_callback=after_model,

@@ -47,7 +47,7 @@ states:
     extract_variables: ["order_context.order_id", "order_context.error"]
 
   - name: EndSuccess
-    objective: "Thank the user and gracefully end the conversation."
+    objective: "Thank the user warmly and gracefully end the conversation."
     extract_variables: []
 
   - name: EndOrderFailed
@@ -55,11 +55,11 @@ states:
     extract_variables: []
 
   - name: EndUnauthorized
-    objective: "Inform the user they are not authorized and end the conversation."
+    objective: "Inform the user they are not authorized and end the conversation politely."
     extract_variables: []
 
   - name: EndBadStanding
-    objective: "Inform the user their account standing prevents an upgrade and end the conversation."
+    objective: "Inform the user their account standing prevents an upgrade and end the conversation politely."
     extract_variables: []
 
   - name: EndNotEligible
