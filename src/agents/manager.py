@@ -14,16 +14,6 @@ from orchestrator.fsm import WorkflowFSM
 
 logger = logging.getLogger(__name__)
 
-def _empty_ledger() -> dict:
-    return {
-        "account_context": {},
-        "line_context": {},
-        "trade_in_context": {},
-        "new_device_context": {},
-        "order_context": {},
-    }
-
-
 # ---------------------------------------------------------------------------
 # FSM (stateless — reads/writes via callback_context.state)
 # ---------------------------------------------------------------------------
@@ -135,7 +125,7 @@ def after_tool(
     result_data = _parse_mcp_response(tool_response)
     intent = result_data.get("detected_intent", "")
     if intent:
-        ledger = tool_context.state.get("ledger", _empty_ledger())
+        ledger = tool_context.state.get("ledger", {})
         current_state = tool_context.state.get("fsm_state", fsm.initial_state)
         new_state = fsm.fire_intent(current_state, intent, ledger)
         tool_context.state["fsm_state"] = new_state
@@ -165,7 +155,7 @@ def after_model(
     if not json_data:
         return None  # No JSON block — conversational reply or terminal state
 
-    ledger = callback_context.state.get("ledger", _empty_ledger())
+    ledger = callback_context.state.get("ledger", {})
     _deep_merge(ledger, json_data)
     callback_context.state["ledger"] = ledger
 

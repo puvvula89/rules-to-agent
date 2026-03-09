@@ -6,19 +6,17 @@ from transitions import Machine
 logger = logging.getLogger(__name__)
 
 
-_LEDGER_KEYS = ['account_context', 'line_context', 'trade_in_context', 'new_device_context', 'order_context']
-
-
-def _make_condition(condition_str: str):
+def _make_condition(condition_str: str, ledger_keys: list):
     """Return a condition function that evaluates condition_str against context kwarg.
 
     Normalizes context so all ledger keys are present (safe subscript access in conditions).
+    ledger_keys is derived from the YAML's extract_variables — no hardcoding in Python.
     simpleeval blocks {} dict literals, so conditions use context['key'].get(...) syntax.
     """
     def condition(event_data):
         raw = event_data.kwargs.get('context', {})
         # Ensure all ledger keys exist so condition strings can use subscript access safely
-        context = {k: raw.get(k, {}) for k in _LEDGER_KEYS}
+        context = {k: raw.get(k, {}) for k in ledger_keys}
         try:
             return bool(simple_eval(condition_str, names={'context': context}))
         except Exception as e:
@@ -59,6 +57,14 @@ class WorkflowFSM:
         # Keep state metadata (objective, extract_variables) in a fast lookup dict.
         self._state_meta = {s['name']: s for s in self.config['states']}
 
+        # Derive ledger keys from YAML extract_variables — no hardcoding in Python.
+        ledger_keys = list({
+            var_path.split('.')[0]
+            for state in self.config['states']
+            for var_path in state.get('extract_variables', [])
+            if '.' in var_path
+        })
+
         self.controller = FlowController()
 
         # Pre-process transitions: replace condition_string with a dynamic method on controller.
@@ -69,7 +75,7 @@ class WorkflowFSM:
             cond_str = tx_copy.pop('condition_string', None)
             if cond_str:
                 method_name = f'_cond_{i}'
-                setattr(self.controller, method_name, _make_condition(cond_str))
+                setattr(self.controller, method_name, _make_condition(cond_str, ledger_keys))
                 tx_copy['conditions'] = method_name
             processed_transitions.append(tx_copy)
 
