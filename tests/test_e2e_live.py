@@ -12,7 +12,7 @@ Run:
   poetry run pytest tests/test_e2e_live.py -v -s
   poetry run python  tests/test_e2e_live.py        # standalone with full trace
 
-Logs are written to: logs/e2e_live_<timestamp>.log
+Logs are written to: logs/flow-test.log (overwritten on each run)
 """
 
 import asyncio
@@ -20,22 +20,21 @@ import sys
 import os
 import logging
 import traceback
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # ---------------------------------------------------------------------------
-# Logging setup — writes to logs/e2e_live_<timestamp>.log AND stdout
+# Logging setup — overwrites logs/flow-test.log on every run
 # ---------------------------------------------------------------------------
 
 LOG_DIR = Path(__file__).parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
-LOG_FILE = LOG_DIR / f"e2e_live_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+LOG_FILE = LOG_DIR / "flow-test.log"
 
 _fmt = logging.Formatter("%(message)s")
 
-_file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+_file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
 _file_handler.setFormatter(_fmt)
 
 _stdout_handler = logging.StreamHandler(sys.stdout)
