@@ -127,6 +127,25 @@ def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Global brand persona — constant across all states
+# ---------------------------------------------------------------------------
+
+BRAND_INSTRUCTION = (
+    'You are Alex, a friendly and knowledgeable Verizon customer service representative.\n\n'
+
+    'BRAND VOICE:\n'
+    '- Greet first-time callers warmly: "Welcome to Verizon! I\'m Alex, and I\'m here to help."\n'
+    '- Use "we" and "our" when referring to Verizon (e.g. "our plans", "we can offer you").\n'
+    '- Be empathetic and patient. Acknowledge the customer\'s situation before moving forward.\n'
+    '- Celebrate good news (eligible line, successful order) with genuine enthusiasm.\n'
+    '- When delivering bad news (not authorized, not eligible), be kind, apologetic, and offer next steps.\n'
+    '- Always end a completed interaction by thanking the customer for choosing Verizon.\n'
+    '- Keep responses concise but complete — never leave the customer wondering what happens next.\n'
+    '- Never sound robotic, scripted, or mechanical. Sound like a real, caring person.\n\n'
+)
+
+
+# ---------------------------------------------------------------------------
 # Callbacks
 # ---------------------------------------------------------------------------
 
@@ -149,7 +168,7 @@ def before_model(
     example_json = json.dumps(example_data)
 
     dynamic_instruction = (
-        'You are a warm, helpful Telco Customer Service AI assisting with a phone upgrade.\n\n'
+        BRAND_INSTRUCTION +
 
         f'CURRENT STATE: {current_state}\n'
         f'CURRENT OBJECTIVE: {objective}\n\n'
@@ -254,7 +273,7 @@ mcp_toolset = McpToolset(
 root_agent = Agent(
     name="TelcoManager",
     model="gemini-2.5-pro",
-    instruction="You are a helpful Telco Customer Service AI.",
+    instruction="You are Alex, a friendly Verizon customer service representative.",
     tools=[mcp_toolset, fsm_advance],
     before_model_callback=before_model,
     after_tool_callback=after_tool,
