@@ -155,11 +155,13 @@ async def run_happy_path_with_trade_in():
     session = AgentSession(root_agent)
     await session.start()
 
-    # Turn 1: Auth
+    # Turn 1: Auth + AccountStandingCheck auto-advance in one turn (slot-filling)
+    # Agent calls verify_auth → fsm_advance → check_standing → fsm_advance without user input
     response = await session.send("Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.")
-    assert session.fsm_state() == "AccountStandingCheck", f"Expected AccountStandingCheck, got {session.fsm_state()}"
+    assert session.fsm_state() in ("AccountStandingCheck", "LineToUpgrade"), \
+        f"Expected AccountStandingCheck or LineToUpgrade, got {session.fsm_state()}"
 
-    # Turn 2: Line selection (AccountStandingCheck → LineToUpgrade should auto-advance after check_standing)
+    # Turn 2: Line selection
     response = await session.send("I want to upgrade the line 555-123-4567.")
     assert session.fsm_state() in ("LineToUpgrade", "CheckLineUpgradeEligibility", "VerifyTradeIn"), \
         f"Unexpected FSM state: {session.fsm_state()}"
