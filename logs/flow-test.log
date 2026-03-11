@@ -4,7 +4,7 @@ TEST: test_happy_path_with_trade_in
 ============================================================
 
 ============================================================
-Session started: e48a4ea6-8ff1-4331-b7ce-89fa9e5eecfb
+Session started: aea06ebf-2d34-49fc-8078-0f49a3f4a782
 ============================================================
 
 [USER] Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.
@@ -12,14 +12,60 @@ Session started: e48a4ea6-8ff1-4331-b7ce-89fa9e5eecfb
 [FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
   [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
   [FSM]   LineToUpgrade
-[AGENT] Great, thanks! Your account is in good standing. Which phone number would you like to upgrade?
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. Let me just pull up your account details.Great, your account is in good standing. Which phone number would you like to upgrade today?
+
+[USER] I want to upgrade the line 555-123-4567.
+[FSM] LineToUpgrade → LineToUpgrade | data: {'line_context': {'is_eligible': True}}
+[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-123-4567'}}
+[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
+  [TOOLS] check_eligibility → fsm_advance → set_line → fsm_advance → fsm_advance
+  [FSM]   VerifyTradeIn
+[AGENT] Perfect! Let me check if that line is eligible for an upgrade.Good news! That line is eligible for an upgrade. Now, are you interested in trading in your current device?.
+
+[USER] Yes, I want to trade in my current device.
+[FSM] VerifyTradeIn → DeviceTradeInChecks | data: {'trade_in_context': {'wants_trade_in': True}}
+  [TOOLS] set_trade_in_preference → fsm_advance
+  [FSM]   DeviceTradeInChecks
+[AGENT] Great! We can certainly help with that. What is the model of the device you'd like to trade in, and what is its condition? (Excellent, Good, or Poor).
+
+[USER] I'm trading in an iPhone 13 in Good condition.
+[FSM] DeviceTradeInChecks → TradeInPricing | data: {'trade_in_context': {'final_condition': 'Good', 'quote_value': 200}}
+[FSM] TradeInPricing → NewUpgradeDeviceSelection | data: {'trade_in_context': {'quote_value': 200}}
+  [TOOLS] record_condition → pricing → fsm_advance → fsm_advance
+  [FSM]   NewUpgradeDeviceSelection
+[AGENT] An iPhone 13 in good condition will get you a $200 trade-in credit. Now, what new device were you hoping to get?.
+
+[USER] I'd like to get the iPhone 16.
+[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'iPhone 16'}}
+[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
+  [TOOLS] select_device → fsm_advance → pricing → fsm_advance
+  [FSM]   FinalPricing
+[AGENT] Great choice! The iPhone 16 is a fantastic device. The full price is $1000. After your $200 trade-in credit, the total comes to $800.
+
+Would you like to proceed with the order?.
+
+[USER] Yes, I confirm the order. Please proceed.
+[FSM] FinalPricing → ProcessOrder | data: {'order_context': {'user_confirmed': True}}
+[FSM] ProcessOrder → EndSuccess | data: {'order_context': {'error': False, 'order_id': 'ORD-999888777'}}
+  [TOOLS] fsm_advance → submit_order → fsm_advance
+  [FSM]   EndSuccess
+[AGENT] Excellent! I'm now submitting your order. Please give me just a moment.Excellent! Your order has been placed successfully. Your order ID is ORD-999888777. You'll receive an email confirmation shortly with all the details.
+
+Is there anything else I can help you with today? Thank you for choosing Verizon
+
+============================================================
+FINAL FSM STATE: EndSuccess
+LEDGER: {'account_context': {'is_authorized': True, 'standing': 'GOOD'}, 'line_context': {'is_eligible': True, 'selected_number': '555-123-4567'}, 'trade_in_context': {'wants_trade_in': True, 'final_condition': 'Good', 'quote_value': 200}, 'new_device_context': {'selection': 'iPhone 16', 'price': 1000}, 'order_context': {'user_confirmed': True, 'error': False, 'order_id': 'ORD-999888777'}}
+============================================================
+
+✓ Happy path with trade-in PASSED
 
 ============================================================
 TEST: test_no_trade_in_path
 ============================================================
 
 ============================================================
-Session started: 7a5bde97-ebb6-44b0-8224-bb32a9605ca5
+Session started: 667d5fe0-acc0-46c0-ba44-ea5c0ff04c77
 ============================================================
 
 [USER] Account 1234, PIN 0000.
@@ -27,40 +73,36 @@ Session started: 7a5bde97-ebb6-44b0-8224-bb32a9605ca5
 [FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
   [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
   [FSM]   LineToUpgrade
-[AGENT] Thanks for verifying your account. I see everything looks good here. Which phone line would you like to upgrade?
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I've successfully verified your account. Now, let me quickly check its standing.Great news, your account is in good standing! Which phone line are you looking to upgrade today?
 
 [USER] Upgrade line 555-999-0000.
-[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-999-0000'}}
-[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
-  [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
-  [FSM]   VerifyTradeIn
-[AGENT] Great news! That line is eligible for an upgrade.
-
-Would you like to trade in your current device?
+[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-999-0000', 'is_eligible': True}}
+  [TOOLS] check_eligibility → fsm_advance
+  [FSM]   CheckLineUpgradeEligibility
+[AGENT] Excellent! That line is eligible for an upgrade. Are you interested in trading in your old device?
 
 [USER] No, I don't want to trade in my old device.
-[FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'trade_in_context': {'wants_trade_in': False}}
+[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'trade_in_context': {'wants_trade_in': False}}
   [TOOLS] set_trade_in_preference → fsm_advance
-  [FSM]   NewUpgradeDeviceSelection
-[AGENT] No problem. Which new device were you interested in today?
+  [FSM]   VerifyTradeIn
+[AGENT] No problem at all. Which new device were you interested in?
 
 [USER] I want the Pixel 9.
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9'}}
-[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
+[FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'new_device_context': {'selection': 'Pixel 9'}}
+[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9', 'price': 1000}}
   [TOOLS] select_device → fsm_advance → pricing → fsm_advance
-  [FSM]   FinalPricing
-[AGENT] The total for your new Pixel 9 comes to $1000.
-
-Do you want to proceed with the order?
+  [FSM]   NewUpgradeDevicePricing
+[AGENT] Great choice! The Pixel 9 is a fantastic phone. The full retail price is $1000. Would you like to proceed with this upgrade?
 
 [USER] Yes, confirm the order.
-[FSM] FinalPricing → ProcessOrder | data: {'order_context': {'user_confirmed': True}}
+[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'order_context': {'user_confirmed': True}}
+[FSM] FinalPricing → ProcessOrder | data: {'trade_in_context': {'quote_value': 0}, 'new_device_context': {'price': 1000}}
 [FSM] ProcessOrder → EndSuccess | data: {'order_context': {'order_id': 'ORD-999888777', 'error': False}}
-  [TOOLS] confirm_order → fsm_advance → submit_order → fsm_advance
+  [TOOLS] confirm_order → fsm_advance → fsm_advance → submit_order → fsm_advance
   [FSM]   EndSuccess
-[AGENT] Excellent! Your order has been placed. Your order number is ORD-999888777. You'll receive an email confirmation shortly with all the details.
+[AGENT] Excellent! Your order has been placed successfully. Your order number is ORD-999888777. You'll receive an email confirmation shortly with all the details. 
 
-Is there anything else I can help you with today?
+Thank you for choosing Verizon! Have a great day.
 
 FINAL STATE: EndSuccess
 ✓ No trade-in path PASSED
@@ -70,14 +112,14 @@ TEST: test_unauthorized_path
 ============================================================
 
 ============================================================
-Session started: 26bb08fd-f92c-498b-b0b8-3c37cbf5eda8
+Session started: 6f00978e-aaf8-4006-a864-2efddd8b47e8
 ============================================================
 
 [USER] My account number is 9999 and PIN is 1234.
 [FSM] Auth → EndUnauthorized | data: {'account_context': {'is_authorized': False}}
   [TOOLS] verify_auth → fsm_advance
   [FSM]   EndUnauthorized
-[AGENT] I'm sorry, but I wasn't able to validate those credentials. Unfortunately, I can't proceed with an upgrade unless I can verify your account. Please feel free to get in touch again if you'd like to re-attempt the authentication process.
+[AGENT] I'm sorry, but it looks like the account number or PIN you provided is incorrect. Please double-check your information and try again, or you can call our main customer service line at 1-800-922-0204 for further assistance. Thank you for contacting Verizon.
 
 FINAL STATE: EndUnauthorized
 ✓ Unauthorized path reached: EndUnauthorized
@@ -87,44 +129,59 @@ TEST: test_change_of_mind
 ============================================================
 
 ============================================================
-Session started: 91047a56-9da7-44db-a8f3-d39f500451df
+Session started: 662febec-a84a-4190-ac5d-b80d7b3ffaf8
 ============================================================
 
 [USER] Account 1234, PIN 5678.
 [FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
 [FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
-  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
-  [FSM]   LineToUpgrade
-[AGENT] Thanks for that! Your account looks good. Which phone number would you like to upgrade?
+[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-1234'}}
+[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
+  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance → fsm_advance → check_eligibility → fsm_advance
+  [FSM]   VerifyTradeIn
+[AGENT] Great news! Your line is eligible for an upgrade.
+
+Are you interested in trading in your current device? We can check its value and apply it to your new purchase.
 
 [USER] Line 555-111-2222.
+[FSM] Intent 'intent_change_line': VerifyTradeIn → LineToUpgrade
 [FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-111-2222'}}
 [FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
-  [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
+  [TOOLS] detect_intent → fsm_advance → check_eligibility → fsm_advance
   [FSM]   VerifyTradeIn
-[AGENT] Great! That line is eligible for an upgrade. Are you interested in trading in your current device?
+[AGENT] Looks like we're good to go with that line instead. Great news! It's also eligible for an upgrade.
+
+Are you interested in trading in your current device? We can check its value and apply it to your new purchase.
 
 [USER] No trade-in.
 [FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'trade_in_context': {'wants_trade_in': False}}
   [TOOLS] set_trade_in_preference → fsm_advance
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] No problem. What new device would you like to get with your upgrade?
+[AGENT] Got it. So, no trade-in today.
+
+Now for the fun part! Which new device are you interested in? We have a great selection of the latest smartphones.
 
 [USER] I want the Pixel 9.
 [FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9'}}
 [FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
   [TOOLS] select_device → fsm_advance → pricing → fsm_advance
   [FSM]   FinalPricing
-[AGENT] Excellent choice. The final price for your new Pixel 9 will be $1000. 
+[AGENT] Excellent choice! The Pixel 9 is a fantastic device.
 
-Does that sound good to you?
+Here's a summary of your order:
+- New Device: Pixel 9
+- Price: $1000
+- Trade-in Credit: $0
+- **Total: $1000**
+
+Does this look right to you?
 
 [USER] Actually wait, I changed my mind. I want a different device.
-[FSM] Intent 'change_new_device': FinalPricing → NewUpgradeDeviceSelection
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDeviceSelection | data: {'new_device_context': {'detected_intent': 'change_new_device'}}
+[FSM] Intent 'intent_change_new_device': FinalPricing → NewUpgradeDeviceSelection
+[FSM] NewUpgradeDeviceSelection → NewUpgradeDeviceSelection | data: {}
   [TOOLS] detect_intent → fsm_advance
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] Of course. What new device would you like instead?
+[AGENT] 
 
 After change of mind: NewUpgradeDeviceSelection
 ✓ Change of mind handled: NewUpgradeDeviceSelection
