@@ -2,186 +2,335 @@
 
 ## 1. Objective
 
-To build an agentic orchestration system using the Google Agent Development Kit (ADK) that replaces deterministic legacy rules engines (like Pega). The system guides users through complex Telco workflows (e.g., Phone Upgrade with Trade-in) utilizing a hybrid architecture: LLMs for conversational intent, slot-filling, and data extraction, combined with a strict Python Finite State Machine (FSM) for deterministic routing.
+Build an agentic orchestration system using the Google Agent Development Kit (ADK) that replaces deterministic legacy rules engines (like Pega). The system guides users through complex Telco workflows (e.g., Phone Upgrade with Trade-in) using a hybrid architecture: an LLM for conversational intent, slot-filling, and data extraction, combined with a Python Finite State Machine (FSM) for deterministic routing.
 
-## 2. High-Level Architecture Pattern
+**Key design principle:** Zero Python changes required when business rules evolve. The LLM semantically bridges tool outputs to structured data; the FSM routes deterministically from YAML conditions. Adding a state, changing a transition condition, or introducing a new change-of-mind intent requires only a YAML edit.
 
-The system uses a **Single-Agent ADK Architecture** strictly bound to a **Dynamic FSM Factory**. Logic (YAML Rules), Memory (JSON Ledger), and Execution (LLMs) are interconnected through high-performance `Pydantic` callbacks (`before_model_callback` and `after_tool_callback`).
+---
 
-### 2.1 The Single Agent Orchestrator
+## 2. High-Level Architecture
 
-1.  **Tier 1: The Manager Agent (The Orchestrator)**
-    * **Role:** Acts as both the conversational greeter and tool executor.
-    * **Tool Belt:** The Manager has a single `google.adk.tools.McpToolset` mapped to an internal MCP mock server.
-    * **Context:** Extremely small. The available tools are physically altered before every single LLM request using ADK hooks.
+The system is composed of three distinct layers that never bleed into each other:
 
-### 2.2 The Execution Guardrails (ADK Hooks)
-
-To eliminate hallucinations and guarantee math compliance, the system injects strict callbacks into the `Manager` agent.
-
-1.  **`before_model_callback`**: Before the ADK contacts Vertex AI, this python function intercepts the request. It reads `session.current_state` (e.g. `Auth`) and looks at the allowed FSM mapping. It dynamically scrubs all invalid tool schemas from the `llm_request.config.tools` payload. This guarantees the LLM physically cannot execute actions that contradict the Backend Rules Engine.
-2.  **`after_tool_callback`**: When the LLM calls an MCP tool and the response comes back, this function intercepts the response. It takes the MCP `TextContent`, updates the memory Ledger, triggers the Python FSM to slide the pointer forward to the next state, and updates the state.
-
-## 3. Core System Components
-
-### 3.1 The Python FSM Factory (The Routing Engine)
-
-* **Role:** Translates the YAML file into a strict mathematical state machine using a Python library (e.g., `transitions`).
-* **Mechanics:** Uses a safe evaluation library (e.g., `simpleeval`) to check YAML string conditions against the JSON Ledger.
-* **Handoff:** Called deterministically at the end of the `after_tool_callback` to advance the logic based on the tool data.
-
-### 3.2 The State & Memory Layer (Anti-Bloat Architecture)
-
-Memory is divided to ensure the LLM never suffers from context fatigue:
-
-1.  **The Ledger (Single Source of Truth):** A hierarchical JSON object in Python memory. Stores factual data extracted by tools. *Crucial Hook:* The `after_tool_callback` intercepts MCP tool returns and updates this ledger automatically before advancing the FSM.
-2.  **The Transcript (Sliding Window):** The raw chat history between the user and Manager. Strictly truncated to the last 3–5 turns.
-
-### 3.3 The Lean YAML Schema (Business Logic)
-
-The YAML is explicitly "DRY" (Don't Repeat Yourself). It does not define required API fields (the Manager infers those directly from the MCP tool schemas). It only defines the business flow, objectives, and transition conditions.
-
-```yaml
-use_case: phone_upgrade_flow
-initial_state: Auth
-
-# Evaluated by Python FSM BEFORE local states to handle "Change of Mind"
-global_transitions:
-  - intent: "change_line"
-    next_state: LineToUpgrade
-    # Wiping the line invalidates EVERYTHING downstream
-    clear_memory: ["line_context", "trade_in_context", "new_device_context", "order_context"]
-    
-  - intent: "change_trade_in_device"
-    next_state: DevicetradeInChecks
-    # Wiping the trade-in invalidates the final math, but keeps the new device choice
-    clear_memory: ["trade_in_context", "order_context"] 
-    
-  - intent: "change_new_device"
-    next_state: NewUpgradeDeviceSelection
-    # Wiping the new device invalidates the final math, but keeps the trade-in quote intact
-    clear_memory: ["new_device_context", "order_context"]
-
-states:
-  Auth:
-    objective: "Verify the user is an authorized account holder using the verify_auth tool."
-    transitions:
-      - condition: "account_context.is_authorized == True"
-        next_state: AccountStandingCheck
-      - condition: "account_context.is_authorized == False"
-        next_state: EndUnauthorized
-
-  AccountStandingCheck:
-    objective: "Check if the account standing is good using the check_standing tool."
-    transitions:
-      - condition: "account_context.standing == 'GOOD'"
-        next_state: LineToUpgrade
-      - condition: "account_context.standing != 'GOOD'"
-        next_state: EndBadStanding
-
-  LineToUpgrade:
-    objective: "Determine which phone line the user wants to upgrade."
-    transitions:
-      - condition: "line_context.selected_number != null"
-        next_state: CheckLineUpgradeEligibility
-
-  CheckLineUpgradeEligibility:
-    objective: "Check if the selected line is eligible for an upgrade using the backend tool."
-    transitions:
-      - condition: "line_context.is_eligible == True"
-        next_state: VerifyTradeIn
-      - condition: "line_context.is_eligible == False"
-        next_state: EndNotEligible
-
-  VerifyTradeIn:
-    objective: "Ask the user if they want to trade in their current device."
-    transitions:
-      - condition: "trade_in_context.wants_trade_in == True"
-        next_state: DevicetradeInChecks
-      - condition: "trade_in_context.wants_trade_in == False"
-        next_state: NewUpgradeDeviceSelection
-
-  DevicetradeInChecks:
-    objective: "Ask the user about the physical condition of their trade-in device."
-    transitions:
-      - condition: "trade_in_context.final_condition != null"
-        next_state: TradeInPricing
-        
-  TradeInPricing:
-    objective: "Get the trade-in quote via the pricing tool based on the final condition."
-    transitions:
-      - condition: "trade_in_context.quote_value >= 0"
-        next_state: NewUpgradeDeviceSelection
-
-  NewUpgradeDeviceSelection:
-    objective: "Determine which new device the user wants to purchase."
-    transitions:
-      - condition: "new_device_context.selection != null"
-        next_state: NewUpgradeDevicePricing
-
-  NewUpgradeDevicePricing:
-    objective: "Get the pricing for the selected new device using the catalog tool."
-    transitions:
-      - condition: "new_device_context.price > 0"
-        next_state: FinalPricing
-
-  FinalPricing:
-    objective: "Calculate final price (New Device Price - Trade In Quote) and present the summary to the user."
-    transitions:
-      - condition: "order_context.user_confirmed == True"
-        next_state: ProcessOrder
-
-  ProcessOrder:
-    objective: "Submit the final transaction using the submit_order tool and confirm success with the user."
-    transitions:
-      - condition: "order_context.order_id != null"
-        next_state: EndSuccess
-      - condition: "order_context.error == True"
-        next_state: EndOrderFailed
-
-  EndSuccess:
-    objective: "Thank the user and gracefully end the conversation."
-    transitions: [] # Empty transitions denote a terminal state
-
-  EndOrderFailed:
-    objective: "Apologize to the user, explain the order failed, and offer to transfer to a human agent."
-    transitions: []
-  
-  EndUnauthorized:
-    objective: "Inform the user they are not authorized and end the conversation."
-    transitions: []
-    
-  EndBadStanding:
-    objective: "Inform the user their account standing prevents an upgrade and end the conversation."
-    transitions: []
-    
-  EndNotEligible:
-    objective: "Inform the user the selected line is not eligible for an upgrade at this time."
-    transitions: []
+```
+┌─────────────────────────────────────────────────┐
+│  ORCHESTRATOR (LLM — Gemini 2.5 Pro)            │
+│  • Manages the user conversation                │
+│  • Calls domain MCP tools to fulfill objectives │
+│  • Translates tool responses into structured    │
+│    JSON and passes them to fsm_advance          │
+│  • Guided by: objective + extract_variables     │
+└──────────────────────┬──────────────────────────┘
+                       │ structured JSON via fsm_advance
+┌──────────────────────▼──────────────────────────┐
+│  BRIDGE (Python — fully domain-agnostic)        │
+│  • before_model: reads FSM state → injects      │
+│    objective + fsm_advance example into prompt  │
+│  • after_tool: handles detect_intent only       │
+│  • after_model: fallback JSON parser            │
+│  • fsm_advance: explicit ADK tool the LLM calls │
+│    after every domain tool; updates ledger and  │
+│    fires FSM                                    │
+└──────────────────────┬──────────────────────────┘
+                       │ ledger dict
+┌──────────────────────▼──────────────────────────┐
+│  ROUTER (FSM — transitions + simpleeval)        │
+│  • All conditions defined in YAML               │
+│  • Per-transition closures evaluate at runtime  │
+│  • Global intent transitions driven by          │
+│    transition_type: global in YAML              │
+│  • Zero knowledge of specific fields or states  │
+└─────────────────────────────────────────────────┘
 ```
 
-## 4. Execution Flow & NLP Slot-Filling (Agent-as-a-Tool)
+---
 
-To ensure the Manager Agent does not hallucinate workflow transitions, its context is heavily modified during flight using callbacks.
+## 3. Core Components
 
-1.  **Greeting & Intent:** Manager asks how it can help. User says, "Upgrade my phone."
-2.  **Discovery & Extraction:** Manager enters the `Auth` state. The `before_model` hook intercepts the request and strips away all tools *except* `verify_auth`. 
-3.  **Slot Filling:** Because the LLM only sees the `verify_auth` schema, it knows exactly what fields to ask for and will not try to submit an order. Manager asks the user for the required fields contextually.
-4.  **Silent Execution & Ledger Update:** User provides the data. The LLM executes the tool. The MCP tool returns a JSON string via `TextContent`. The `after_tool` hook intercepts this response.
-5.  **FSM Routing:** Inside the `after_tool` hook, Python updates the memory Ledger with the new data. It then immediately evaluates the FSM. The Python FSM evaluates the rules against the Ledger, moves the state pointer, and updates the session logic so the next `before_model` call will fetch the new tools.
-6.  **The Fast-Forward Effect:** If the user provides upfront data (e.g., *"Upgrade line 3456, account 1234, pin 1234"*), the ADK handles this gracefully within the bounds of what the `before_model` hook allowed for that turn.
+### 3.1 The ADK Agent (`src/agents/manager.py`)
 
-## 5. Flexibility & Navigation (Cascading Clears)
+A single `google.adk.Agent` named `TelcoManager` backed by Gemini 2.5 Pro.
 
-The architecture natively supports non-linear conversation ("Change of Mind") without corrupting math or bloating the LLM context.
+**Tools available to the LLM (always, no filtering):**
+- All domain MCP tools via `McpToolset` (12 tools: `verify_auth`, `check_standing`, `set_line`, `check_eligibility`, `set_trade_in_preference`, `record_condition`, `pricing`, `select_device`, `confirm_order`, `decline_order`, `submit_order`, `detect_intent`)
+- `fsm_advance` — an internal ADK `FunctionTool` registered directly on the agent
 
-1.  **Trigger:** User says, "Actually, let's trade in my iPad instead."
-2.  **Intent Recognition:** The ADK Agent recognizes the intent and determines it falls outside the bounds of the current node's slot filling, utilizing global knowledge.
-3.  **Deterministic Wipe:** A designated tool or fallback mechanism triggers a state evaluation that matches a `global_transition` in the YAML. It physically deletes `trade_in_context` and `order_context` from the JSON Ledger, ensuring old quotes are wiped, but preserving the `new_device_context`.
-4.  **Handoff:** The FSM rewinds the state pointer to `DevicetradeInChecks`. The `before_model` hook immediately re-injects the trade-in tools. The Manager asks the user about the iPad with a clean context window.
+> **Why no tool filtering?** Filtering was considered and rejected. Injecting the current objective and `extract_variables` into the system prompt gives the LLM sufficient guidance to pick the right tool. Filtering adds fragile coupling between Python and YAML with no meaningful safety benefit — the FSM itself is the authoritative guardrail.
 
-## 6. Technical Debt & Phase 2 Features (Post-POC)
+### 3.2 The Three ADK Callbacks
 
-* **Auto-Generating `clear_memory` (Graph Traversal):** Business users should not manually map memory wipes in YAML. In V2, the Python backend will parse the YAML into a Directed Acyclic Graph (DAG) and automatically calculate the downstream data variables that must be wiped when a state regresses.
-* **Human-in-the-Loop (HITL):** A mechanism to serialize the JSON Ledger and current FSM state to pass to a live human dashboard upon unresolvable workflow errors (e.g., hard failure on account standing).
-* **Dynamic Agent Topologies:** Expanding the YAML to support `execution_mode: parallel` so the Manager can spin up ADK `ParallelAgents` for concurrent execution of multi-line audits.
+#### `before_model_callback`
+Fires before every LLM request. Injects a two-part dynamic system instruction:
+
+1. **`BRAND_INSTRUCTION`** (constant) — Verizon brand persona ("Alex"), tone guidelines, empathy rules. Identical across all states.
+2. **Per-state dynamic block** — reads `fsm_state` from session, fetches `objective` and `extract_variables` from the FSM, builds a concrete `fsm_advance` call example, and appends the global intent list (loaded from YAML at startup).
+
+The LLM always receives:
+```
+CURRENT STATE: <state_name>
+CURRENT OBJECTIVE: <objective text>
+WORKFLOW RULES:
+1. Call the appropriate domain tool(s)...
+2. After each domain tool call, call fsm_advance(data=<example>)
+3. fsm_advance returns next_objective and data_still_needed...
+CHANGE OF MIND — call detect_intent(intent) with one of:
+  - intent_change_line: User wants to change the phone line they are upgrading
+  - intent_change_new_device: User wants to select a different new device
+  ...
+```
+
+No tool filtering occurs here. The only output is a mutated `system_instruction`.
+
+#### `after_tool_callback`
+Fires after every tool call. **Handles `detect_intent` only.** For all other tools, returns the response unchanged (the LLM is responsible for calling `fsm_advance` explicitly).
+
+When `detect_intent` fires:
+1. Parses `detected_intent` (a full trigger name, e.g., `intent_change_new_device`) from the MCP response
+2. Calls `fsm.fire_intent(current_state, trigger_name, ledger)` which:
+   - Wipes the relevant ledger keys (defined in YAML `clear_keys`)
+   - Jumps the FSM to the target state
+
+#### `after_model_callback`
+**Fallback only.** Handles the case where the LLM produces a ` ```json``` ` block in its text response instead of calling `fsm_advance` (e.g., for terminal states where no tool call is needed).
+
+If the response contains function calls, this callback skips entirely. Otherwise it:
+1. Parses the first ` ```json``` ` block from the LLM text
+2. Deep-merges it into the ledger
+3. Runs a cascade loop (`evaluate` → `evaluate` → ...) until the FSM stabilises
+
+### 3.3 The `fsm_advance` Tool (Primary FSM Advancement)
+
+An internal ADK `FunctionTool` the LLM is instructed to call after every domain tool call. This is the primary mechanism by which the FSM advances.
+
+```
+LLM: call verify_auth(account_number="1234", pin="5678")
+MCP: {"is_authorized": true}
+LLM: call fsm_advance(data={"account_context": {"is_authorized": true}})
+FSM: Auth → AccountStandingCheck
+fsm_advance returns: {
+    "workflow_advanced_to": "AccountStandingCheck",
+    "next_objective": "Check if the account standing is good...",
+    "data_still_needed": ["account_context.standing"]
+}
+LLM: call check_standing(account_number="1234")   ← immediately, no user input needed
+...
+```
+
+Internally `fsm_advance`:
+1. Normalises boolean strings (`"true"` → `True`, `"false"` → `False`) — the LLM occasionally emits booleans as strings
+2. Deep-merges the data into the ledger (additive, never overwrites unrelated fields)
+3. Calls `fsm.evaluate(current_state, ledger)` → new state
+4. Returns the new state name, its objective, and its `extract_variables` list
+
+### 3.4 The Python FSM (`src/orchestrator/fsm.py`)
+
+A stateless FSM built on the `transitions` library (0.9.x) and driven entirely by YAML.
+
+**`WorkflowFSM.__init__`** parses the YAML and:
+- Derives ledger keys from `extract_variables` across all states (no hardcoding)
+- For each transition with `condition_string`: generates a `simpleeval` closure and attaches it to `FlowController`
+- For each transition with `transition_type: global` + `clear_keys`: generates a memory-wipe closure dynamically (no hardcoded method names) and wires it as the `before` callback
+
+**Key API:**
+| Method | Purpose |
+|---|---|
+| `evaluate(state, ledger)` | Fire `advance` trigger; return new state (or same if no condition matches) |
+| `fire_intent(state, trigger_name, ledger)` | Fire a global intent trigger by full name; wipes ledger keys in-place |
+| `get_objective(state)` | Return objective string for a state |
+| `get_extract_variables(state)` | Return list of `context.field` paths the LLM must populate |
+| `get_global_intents()` | Return `[{trigger, description}]` for all `transition_type: global` transitions |
+
+**`simpleeval` constraint:** Condition strings cannot use `{}` dict literals. All conditions use subscript access: `context['account_context'].get('is_authorized') == True`.
+
+### 3.5 The YAML Schema (`config/phone_upgrade.yaml`)
+
+All business logic lives here. Python has zero knowledge of state names, field names, or condition logic.
+
+```yaml
+name: phone_upgrade_flow
+initial: Auth
+
+states:
+  - name: Auth
+    objective: "Verify the user is an authorized account holder using the verify_auth tool."
+    extract_variables: ["account_context.is_authorized"]
+
+  # ... 14 more states
+
+transitions:
+  # Global intents — identified by transition_type: global
+  # clear_keys drives memory wipes (no hardcoded Python methods)
+  # description is injected into the LLM system prompt dynamically
+  - trigger: intent_change_new_device
+    source: "*"
+    dest: NewUpgradeDeviceSelection
+    transition_type: global
+    clear_keys: [new_device_context, order_context]
+    description: "User wants to select a different new device"
+
+  # Local transitions — all use the universal trigger 'advance'
+  - trigger: advance
+    source: Auth
+    dest: AccountStandingCheck
+    condition_string: "context['account_context'].get('is_authorized') == True"
+
+  # ...
+```
+
+**What lives in YAML only:**
+- State names and objectives
+- `extract_variables` (tells LLM what data to collect per state)
+- Transition `condition_string` (evaluated by `simpleeval`)
+- Global intent trigger names, `clear_keys`, and `description`
+
+**What does NOT live anywhere in Python or YAML:**
+- Which tool to call per state — the LLM infers this from the objective + tool docstrings
+- Ledger key names — derived at runtime from `extract_variables`
+
+### 3.6 The Ledger (Session State)
+
+A hierarchical JSON dict stored in ADK session state (`tool_context.state["ledger"]`). Grows additively across turns via `_deep_merge`. Never overwritten entirely — only targeted keys are cleared on change-of-mind.
+
+Structure mirrors the `extract_variables` context groups:
+```json
+{
+  "account_context":    {"is_authorized": true, "standing": "GOOD"},
+  "line_context":       {"selected_number": "555-1234", "is_eligible": true},
+  "trade_in_context":   {"wants_trade_in": true, "final_condition": "Good", "quote_value": 200},
+  "new_device_context": {"selection": "iPhone 16", "price": 1000},
+  "order_context":      {"user_confirmed": true, "order_id": "ORD-999888777", "error": false}
+}
+```
+
+### 3.7 The MCP Server (`mock_mcp_server/server.py`)
+
+A FastMCP ASGI server (`mcp.streamable_http_app()`) exposing 12 tools over Streamable HTTP. Returns plain JSON dicts. The LLM calls these tools naturally; the MCP envelope is unwrapped by `_parse_mcp_response` in the Python bridge when needed.
+
+---
+
+## 4. Execution Flow
+
+### 4.1 Normal Turn (Slot-Filling)
+
+The LLM is instructed to loop `tool → fsm_advance → tool → fsm_advance` within a single turn, continuing as long as it has the data needed to advance. It only pauses to ask the user when `data_still_needed` contains fields it cannot fill from the conversation.
+
+```
+User: "Hi, I'd like to upgrade my phone. Account 1234, PIN 5678."
+
+before_model → injects: CURRENT STATE: Auth, CURRENT OBJECTIVE: verify_auth...
+LLM → verify_auth(account_number="1234", pin="5678")
+MCP → {"is_authorized": true}
+LLM → fsm_advance(data={"account_context": {"is_authorized": true}})
+FSM → Auth → AccountStandingCheck
+      returns: next_objective="Check standing...", data_still_needed=["account_context.standing"]
+LLM → check_standing(account_number="1234")     ← no user input needed
+MCP → {"standing": "GOOD"}
+LLM → fsm_advance(data={"account_context": {"standing": "GOOD"}})
+FSM → AccountStandingCheck → LineToUpgrade
+      returns: next_objective="Determine which phone line...", data_still_needed=["line_context.selected_number"]
+LLM → "Great! Your account is in good standing. Which phone number would you like to upgrade?"
+      ← pauses: needs line number from user
+```
+
+### 4.2 Change-of-Mind Flow
+
+```
+User: "Actually, I want a different phone."
+
+LLM → detect_intent(intent="intent_change_new_device")
+MCP → {"detected_intent": "intent_change_new_device"}
+after_tool → fsm.fire_intent("FinalPricing", "intent_change_new_device", ledger)
+           → wipes new_device_context and order_context from ledger
+           → FSM jumps to NewUpgradeDeviceSelection
+LLM → "Of course! What new device would you like instead?"
+```
+
+The LLM knows which intents are available because `before_model` injects them dynamically from `fsm.get_global_intents()` — loaded from YAML at startup.
+
+---
+
+## 5. FSM States (15 total)
+
+**Happy path:**
+`Auth → AccountStandingCheck → LineToUpgrade → CheckLineUpgradeEligibility → VerifyTradeIn → DeviceTradeInChecks → TradeInPricing → NewUpgradeDeviceSelection → NewUpgradeDevicePricing → FinalPricing → ProcessOrder → EndSuccess`
+
+**Error terminals:** `EndUnauthorized`, `EndBadStanding`, `EndNotEligible`, `EndOrderFailed`
+
+**Global intents (change-of-mind, fire from any state):**
+- `intent_change_line` → `LineToUpgrade` (clears line + all downstream)
+- `intent_change_trade_in_device` → `DeviceTradeInChecks` (clears trade-in + downstream)
+- `intent_change_new_device` → `NewUpgradeDeviceSelection` (clears device + order)
+
+---
+
+## 6. Testing Pyramid
+
+```
+tests/
+  test_fsm.py           — 21 unit tests: FSM transitions, intent resets, get_global_intents
+                          No LLM, no MCP server. Tests the YAML→FSM routing in isolation.
+
+  test_agent_flow.py    — 68 integration tests: callback pipeline simulation
+                          No real LLM. Uses mock ADK objects to exercise before_model,
+                          after_tool, after_model, and fsm_advance with the real FSM.
+                          Includes MCP smoke tests (require server on :8080).
+
+  test_e2e_live.py      — 4 E2E scenarios: real Gemini LLM + real MCP server
+                          Happy path with trade-in, no trade-in, unauthorized account,
+                          change-of-mind. Requires GCP credentials + MCP server.
+```
+
+---
+
+## 7. How to Run
+
+```bash
+# Terminal 1 — MCP server
+/usr/local/bin/poetry run uvicorn mock_mcp_server.server:app --port 8080
+
+# Terminal 2 — ADK web UI
+/usr/local/bin/poetry run adk web src/agents/
+# Opens http://localhost:8000
+
+# GCP credentials (Vertex AI)
+export GOOGLE_GENAI_USE_VERTEXAI=true
+export GOOGLE_CLOUD_PROJECT=tmeg-working-demos
+export GOOGLE_CLOUD_LOCATION=us-central1
+```
+
+```bash
+# Run tests (no credentials needed for unit + integration)
+/usr/local/bin/poetry run pytest tests/test_fsm.py tests/test_agent_flow.py -v -k "not TestMCPServer"
+
+# Full E2E (MCP server + GCP credentials required)
+/usr/local/bin/poetry run pytest tests/test_e2e_live.py -v -s
+# Logs written to: logs/flow-test.log
+```
+
+---
+
+## 8. Technical Debt & Future Work
+
+### V2: Sub-Agent Architecture (Context Isolation)
+
+In the POC, all tool responses accumulate in the root agent's context window across turns. For production, a sub-agent pattern is recommended:
+
+- **Root agent:** Manages all user conversation, knows FSM state, infers what to ask the user from objective + tool docstrings, writes user inputs to shared session, calls a `SubAgent` as an `AgentTool`
+- **Sub-agent:** Receives the current state objective as its system prompt, reads user inputs from session, selects and calls the appropriate MCP tool, returns a ` ```json``` ` block
+- **Root agent:** Parses the sub-agent reply, feeds JSON to FSM via `fsm_advance`, advances state
+
+This ensures tool responses never accumulate in the root agent context. Root agent context only grows with user conversation + small JSON blocks per state. Sub-agent context is always fresh (one objective + one tool call per invocation).
+
+ADK `AgentTool` supports this natively. Session state is shared between parent and child agents.
+
+### Auto-Generating `clear_keys` (Graph Traversal)
+
+Business users should not manually map memory wipes in YAML. In V2, the Python backend will parse the YAML into a Directed Acyclic Graph (DAG) and automatically calculate the downstream data variables that must be cleared when a state regresses. The `clear_keys` field would be removed from YAML entirely.
+
+### Human-in-the-Loop (HITL)
+
+Serialize the JSON ledger and current FSM state to a live human dashboard on unresolvable workflow errors (e.g., hard failure on account standing, repeated auth failures).
+
+### Dynamic Agent Topologies
+
+Expand the YAML to support `execution_mode: parallel` so the manager can spin up ADK `ParallelAgents` for concurrent execution of multi-line audits.
