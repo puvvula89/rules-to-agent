@@ -4,184 +4,405 @@ TEST: test_happy_path_with_trade_in
 ============================================================
 
 ============================================================
-Session started: aea06ebf-2d34-49fc-8078-0f49a3f4a782
+Session started: d324e22d-9297-4f38-84ba-1595b4ec892f
 ============================================================
 
 [USER] Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.
-[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
-[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
-  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
-  [FSM]   LineToUpgrade
-[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. Let me just pull up your account details.Great, your account is in good standing. Which phone number would you like to upgrade today?
+[ERROR] Exception during runner.run_async on turn: 'Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.'
+Traceback (most recent call last):
+  File "/Users/admin/VibeCoding/rules-to-agent/tests/test_e2e_live.py", line 105, in send
+    async for event in self.runner.run_async(
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+                    final_text = part.text  # keep only the last text (summarized response)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 565, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 550, in _run_with_trace
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 782, in _exec_with_plugin
+    async for event in agen:
+    ...<64 lines>...
+        yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 539, in execute
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py", line 295, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py", line 470, in _run_async_impl
+    async for event in agen:
+    ...<5 lines>...
+        should_pause = True
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 752, in run_async
+    async for event in agen:
+      last_event = event
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 829, in _run_one_step_async
+    async for llm_response in agen:
+    ...<13 lines>...
+          yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1186, in _call_llm_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1169, in _call_llm_with_tracing
+    async for llm_response in agen:
+    ...<13 lines>...
+      yield llm_response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1245, in _run_and_handle_error
+    async for response in agen:
+      yield response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 389, in _run_and_handle_error
+    raise model_error
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 374, in _run_and_handle_error
+    async for llm_response in agen:
+      tracing.trace_generate_content_result(span, llm_response)
+      yield llm_response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 165, in generate_content_async
+    await self._preprocess_request(llm_request)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 432, in _preprocess_request
+    if self._api_backend == GoogleLLMVariant.GEMINI_API:
+       ^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/functools.py", line 1126, in __get__
+    val = self.func(instance)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 319, in _api_backend
+    if self.api_client.vertexai
+       ^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/functools.py", line 1126, in __get__
+    val = self.func(instance)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 307, in api_client
+    return Client(
+        http_options=types.HttpOptions(
+    ...<3 lines>...
+        )
+    )
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/client.py", line 426, in __init__
+    self._api_client = self._get_api_client(
+                       ~~~~~~~~~~~~~~~~~~~~^
+        vertexai=vertexai,
+        ^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        http_options=http_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/client.py", line 474, in _get_api_client
+    return BaseApiClient(
+        vertexai=vertexai,
+    ...<4 lines>...
+        http_options=http_options,
+    )
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 706, in __init__
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: No API key was provided. Please pass a valid API key. Learn how to create an API key at https://ai.google.dev/gemini-api/docs/api-key.
 
-[USER] I want to upgrade the line 555-123-4567.
-[FSM] LineToUpgrade → LineToUpgrade | data: {'line_context': {'is_eligible': True}}
-[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-123-4567'}}
-[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
-  [TOOLS] check_eligibility → fsm_advance → set_line → fsm_advance → fsm_advance
-  [FSM]   VerifyTradeIn
-[AGENT] Perfect! Let me check if that line is eligible for an upgrade.Good news! That line is eligible for an upgrade. Now, are you interested in trading in your current device?.
-
-[USER] Yes, I want to trade in my current device.
-[FSM] VerifyTradeIn → DeviceTradeInChecks | data: {'trade_in_context': {'wants_trade_in': True}}
-  [TOOLS] set_trade_in_preference → fsm_advance
-  [FSM]   DeviceTradeInChecks
-[AGENT] Great! We can certainly help with that. What is the model of the device you'd like to trade in, and what is its condition? (Excellent, Good, or Poor).
-
-[USER] I'm trading in an iPhone 13 in Good condition.
-[FSM] DeviceTradeInChecks → TradeInPricing | data: {'trade_in_context': {'final_condition': 'Good', 'quote_value': 200}}
-[FSM] TradeInPricing → NewUpgradeDeviceSelection | data: {'trade_in_context': {'quote_value': 200}}
-  [TOOLS] record_condition → pricing → fsm_advance → fsm_advance
-  [FSM]   NewUpgradeDeviceSelection
-[AGENT] An iPhone 13 in good condition will get you a $200 trade-in credit. Now, what new device were you hoping to get?.
-
-[USER] I'd like to get the iPhone 16.
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'iPhone 16'}}
-[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
-  [TOOLS] select_device → fsm_advance → pricing → fsm_advance
-  [FSM]   FinalPricing
-[AGENT] Great choice! The iPhone 16 is a fantastic device. The full price is $1000. After your $200 trade-in credit, the total comes to $800.
-
-Would you like to proceed with the order?.
-
-[USER] Yes, I confirm the order. Please proceed.
-[FSM] FinalPricing → ProcessOrder | data: {'order_context': {'user_confirmed': True}}
-[FSM] ProcessOrder → EndSuccess | data: {'order_context': {'error': False, 'order_id': 'ORD-999888777'}}
-  [TOOLS] fsm_advance → submit_order → fsm_advance
-  [FSM]   EndSuccess
-[AGENT] Excellent! I'm now submitting your order. Please give me just a moment.Excellent! Your order has been placed successfully. Your order ID is ORD-999888777. You'll receive an email confirmation shortly with all the details.
-
-Is there anything else I can help you with today? Thank you for choosing Verizon
-
-============================================================
-FINAL FSM STATE: EndSuccess
-LEDGER: {'account_context': {'is_authorized': True, 'standing': 'GOOD'}, 'line_context': {'is_eligible': True, 'selected_number': '555-123-4567'}, 'trade_in_context': {'wants_trade_in': True, 'final_condition': 'Good', 'quote_value': 200}, 'new_device_context': {'selection': 'iPhone 16', 'price': 1000}, 'order_context': {'user_confirmed': True, 'error': False, 'order_id': 'ORD-999888777'}}
-============================================================
-
-✓ Happy path with trade-in PASSED
 
 ============================================================
 TEST: test_no_trade_in_path
 ============================================================
 
 ============================================================
-Session started: 667d5fe0-acc0-46c0-ba44-ea5c0ff04c77
+Session started: 7d3ffec6-59ee-4f64-aeb5-78cd160d0311
 ============================================================
 
 [USER] Account 1234, PIN 0000.
-[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
-[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
-  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
-  [FSM]   LineToUpgrade
-[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I've successfully verified your account. Now, let me quickly check its standing.Great news, your account is in good standing! Which phone line are you looking to upgrade today?
+[ERROR] Exception during runner.run_async on turn: 'Account 1234, PIN 0000.'
+Traceback (most recent call last):
+  File "/Users/admin/VibeCoding/rules-to-agent/tests/test_e2e_live.py", line 105, in send
+    async for event in self.runner.run_async(
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+                    final_text = part.text  # keep only the last text (summarized response)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 565, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 550, in _run_with_trace
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 782, in _exec_with_plugin
+    async for event in agen:
+    ...<64 lines>...
+        yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 539, in execute
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py", line 295, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py", line 470, in _run_async_impl
+    async for event in agen:
+    ...<5 lines>...
+        should_pause = True
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 752, in run_async
+    async for event in agen:
+      last_event = event
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 829, in _run_one_step_async
+    async for llm_response in agen:
+    ...<13 lines>...
+          yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1186, in _call_llm_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1169, in _call_llm_with_tracing
+    async for llm_response in agen:
+    ...<13 lines>...
+      yield llm_response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1245, in _run_and_handle_error
+    async for response in agen:
+      yield response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 389, in _run_and_handle_error
+    raise model_error
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 374, in _run_and_handle_error
+    async for llm_response in agen:
+      tracing.trace_generate_content_result(span, llm_response)
+      yield llm_response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 165, in generate_content_async
+    await self._preprocess_request(llm_request)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 432, in _preprocess_request
+    if self._api_backend == GoogleLLMVariant.GEMINI_API:
+       ^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/functools.py", line 1126, in __get__
+    val = self.func(instance)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 319, in _api_backend
+    if self.api_client.vertexai
+       ^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/functools.py", line 1126, in __get__
+    val = self.func(instance)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 307, in api_client
+    return Client(
+        http_options=types.HttpOptions(
+    ...<3 lines>...
+        )
+    )
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/client.py", line 426, in __init__
+    self._api_client = self._get_api_client(
+                       ~~~~~~~~~~~~~~~~~~~~^
+        vertexai=vertexai,
+        ^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        http_options=http_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/client.py", line 474, in _get_api_client
+    return BaseApiClient(
+        vertexai=vertexai,
+    ...<4 lines>...
+        http_options=http_options,
+    )
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 706, in __init__
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: No API key was provided. Please pass a valid API key. Learn how to create an API key at https://ai.google.dev/gemini-api/docs/api-key.
 
-[USER] Upgrade line 555-999-0000.
-[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-999-0000', 'is_eligible': True}}
-  [TOOLS] check_eligibility → fsm_advance
-  [FSM]   CheckLineUpgradeEligibility
-[AGENT] Excellent! That line is eligible for an upgrade. Are you interested in trading in your old device?
-
-[USER] No, I don't want to trade in my old device.
-[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'trade_in_context': {'wants_trade_in': False}}
-  [TOOLS] set_trade_in_preference → fsm_advance
-  [FSM]   VerifyTradeIn
-[AGENT] No problem at all. Which new device were you interested in?
-
-[USER] I want the Pixel 9.
-[FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'new_device_context': {'selection': 'Pixel 9'}}
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9', 'price': 1000}}
-  [TOOLS] select_device → fsm_advance → pricing → fsm_advance
-  [FSM]   NewUpgradeDevicePricing
-[AGENT] Great choice! The Pixel 9 is a fantastic phone. The full retail price is $1000. Would you like to proceed with this upgrade?
-
-[USER] Yes, confirm the order.
-[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'order_context': {'user_confirmed': True}}
-[FSM] FinalPricing → ProcessOrder | data: {'trade_in_context': {'quote_value': 0}, 'new_device_context': {'price': 1000}}
-[FSM] ProcessOrder → EndSuccess | data: {'order_context': {'order_id': 'ORD-999888777', 'error': False}}
-  [TOOLS] confirm_order → fsm_advance → fsm_advance → submit_order → fsm_advance
-  [FSM]   EndSuccess
-[AGENT] Excellent! Your order has been placed successfully. Your order number is ORD-999888777. You'll receive an email confirmation shortly with all the details. 
-
-Thank you for choosing Verizon! Have a great day.
-
-FINAL STATE: EndSuccess
-✓ No trade-in path PASSED
 
 ============================================================
 TEST: test_unauthorized_path
 ============================================================
 
 ============================================================
-Session started: 6f00978e-aaf8-4006-a864-2efddd8b47e8
+Session started: cbac5bb2-bcdf-4dc6-9543-7ed9502dab16
 ============================================================
 
 [USER] My account number is 9999 and PIN is 1234.
-[FSM] Auth → EndUnauthorized | data: {'account_context': {'is_authorized': False}}
-  [TOOLS] verify_auth → fsm_advance
-  [FSM]   EndUnauthorized
-[AGENT] I'm sorry, but it looks like the account number or PIN you provided is incorrect. Please double-check your information and try again, or you can call our main customer service line at 1-800-922-0204 for further assistance. Thank you for contacting Verizon.
+[ERROR] Exception during runner.run_async on turn: 'My account number is 9999 and PIN is 1234.'
+Traceback (most recent call last):
+  File "/Users/admin/VibeCoding/rules-to-agent/tests/test_e2e_live.py", line 105, in send
+    async for event in self.runner.run_async(
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+                    final_text = part.text  # keep only the last text (summarized response)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 565, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 550, in _run_with_trace
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 782, in _exec_with_plugin
+    async for event in agen:
+    ...<64 lines>...
+        yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 539, in execute
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py", line 295, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py", line 470, in _run_async_impl
+    async for event in agen:
+    ...<5 lines>...
+        should_pause = True
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 752, in run_async
+    async for event in agen:
+      last_event = event
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 829, in _run_one_step_async
+    async for llm_response in agen:
+    ...<13 lines>...
+          yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1186, in _call_llm_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1169, in _call_llm_with_tracing
+    async for llm_response in agen:
+    ...<13 lines>...
+      yield llm_response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1245, in _run_and_handle_error
+    async for response in agen:
+      yield response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 389, in _run_and_handle_error
+    raise model_error
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 374, in _run_and_handle_error
+    async for llm_response in agen:
+      tracing.trace_generate_content_result(span, llm_response)
+      yield llm_response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 165, in generate_content_async
+    await self._preprocess_request(llm_request)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 432, in _preprocess_request
+    if self._api_backend == GoogleLLMVariant.GEMINI_API:
+       ^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/functools.py", line 1126, in __get__
+    val = self.func(instance)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 319, in _api_backend
+    if self.api_client.vertexai
+       ^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/functools.py", line 1126, in __get__
+    val = self.func(instance)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 307, in api_client
+    return Client(
+        http_options=types.HttpOptions(
+    ...<3 lines>...
+        )
+    )
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/client.py", line 426, in __init__
+    self._api_client = self._get_api_client(
+                       ~~~~~~~~~~~~~~~~~~~~^
+        vertexai=vertexai,
+        ^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        http_options=http_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/client.py", line 474, in _get_api_client
+    return BaseApiClient(
+        vertexai=vertexai,
+    ...<4 lines>...
+        http_options=http_options,
+    )
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 706, in __init__
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: No API key was provided. Please pass a valid API key. Learn how to create an API key at https://ai.google.dev/gemini-api/docs/api-key.
 
-FINAL STATE: EndUnauthorized
-✓ Unauthorized path reached: EndUnauthorized
 
 ============================================================
 TEST: test_change_of_mind
 ============================================================
 
 ============================================================
-Session started: 662febec-a84a-4190-ac5d-b80d7b3ffaf8
+Session started: 6ad52d73-31ac-4974-a640-558e51373c85
 ============================================================
 
 [USER] Account 1234, PIN 5678.
-[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
-[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
-[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-1234'}}
-[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
-  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance → fsm_advance → check_eligibility → fsm_advance
-  [FSM]   VerifyTradeIn
-[AGENT] Great news! Your line is eligible for an upgrade.
+[ERROR] Exception during runner.run_async on turn: 'Account 1234, PIN 5678.'
+Traceback (most recent call last):
+  File "/Users/admin/VibeCoding/rules-to-agent/tests/test_e2e_live.py", line 105, in send
+    async for event in self.runner.run_async(
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+                    final_text = part.text  # keep only the last text (summarized response)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 565, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 550, in _run_with_trace
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 782, in _exec_with_plugin
+    async for event in agen:
+    ...<64 lines>...
+        yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 539, in execute
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py", line 295, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py", line 470, in _run_async_impl
+    async for event in agen:
+    ...<5 lines>...
+        should_pause = True
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 752, in run_async
+    async for event in agen:
+      last_event = event
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 829, in _run_one_step_async
+    async for llm_response in agen:
+    ...<13 lines>...
+          yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1186, in _call_llm_async
+    async for event in agen:
+      yield event
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1169, in _call_llm_with_tracing
+    async for llm_response in agen:
+    ...<13 lines>...
+      yield llm_response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1245, in _run_and_handle_error
+    async for response in agen:
+      yield response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 389, in _run_and_handle_error
+    raise model_error
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 374, in _run_and_handle_error
+    async for llm_response in agen:
+      tracing.trace_generate_content_result(span, llm_response)
+      yield llm_response
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 165, in generate_content_async
+    await self._preprocess_request(llm_request)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 432, in _preprocess_request
+    if self._api_backend == GoogleLLMVariant.GEMINI_API:
+       ^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/functools.py", line 1126, in __get__
+    val = self.func(instance)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 319, in _api_backend
+    if self.api_client.vertexai
+       ^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/functools.py", line 1126, in __get__
+    val = self.func(instance)
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 307, in api_client
+    return Client(
+        http_options=types.HttpOptions(
+    ...<3 lines>...
+        )
+    )
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/client.py", line 426, in __init__
+    self._api_client = self._get_api_client(
+                       ~~~~~~~~~~~~~~~~~~~~^
+        vertexai=vertexai,
+        ^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        http_options=http_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/client.py", line 474, in _get_api_client
+    return BaseApiClient(
+        vertexai=vertexai,
+    ...<4 lines>...
+        http_options=http_options,
+    )
+  File "/Users/admin/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-9PqGEpae-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 706, in __init__
+    raise ValueError(
+    ...<3 lines>...
+    )
+ValueError: No API key was provided. Please pass a valid API key. Learn how to create an API key at https://ai.google.dev/gemini-api/docs/api-key.
 
-Are you interested in trading in your current device? We can check its value and apply it to your new purchase.
-
-[USER] Line 555-111-2222.
-[FSM] Intent 'intent_change_line': VerifyTradeIn → LineToUpgrade
-[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-111-2222'}}
-[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
-  [TOOLS] detect_intent → fsm_advance → check_eligibility → fsm_advance
-  [FSM]   VerifyTradeIn
-[AGENT] Looks like we're good to go with that line instead. Great news! It's also eligible for an upgrade.
-
-Are you interested in trading in your current device? We can check its value and apply it to your new purchase.
-
-[USER] No trade-in.
-[FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'trade_in_context': {'wants_trade_in': False}}
-  [TOOLS] set_trade_in_preference → fsm_advance
-  [FSM]   NewUpgradeDeviceSelection
-[AGENT] Got it. So, no trade-in today.
-
-Now for the fun part! Which new device are you interested in? We have a great selection of the latest smartphones.
-
-[USER] I want the Pixel 9.
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9'}}
-[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
-  [TOOLS] select_device → fsm_advance → pricing → fsm_advance
-  [FSM]   FinalPricing
-[AGENT] Excellent choice! The Pixel 9 is a fantastic device.
-
-Here's a summary of your order:
-- New Device: Pixel 9
-- Price: $1000
-- Trade-in Credit: $0
-- **Total: $1000**
-
-Does this look right to you?
-
-[USER] Actually wait, I changed my mind. I want a different device.
-[FSM] Intent 'intent_change_new_device': FinalPricing → NewUpgradeDeviceSelection
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDeviceSelection | data: {}
-  [TOOLS] detect_intent → fsm_advance
-  [FSM]   NewUpgradeDeviceSelection
-[AGENT] 
-
-After change of mind: NewUpgradeDeviceSelection
-✓ Change of mind handled: NewUpgradeDeviceSelection

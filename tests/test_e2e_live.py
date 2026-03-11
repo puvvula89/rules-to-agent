@@ -112,7 +112,7 @@ class AgentSession:
                         if hasattr(part, "function_call") and part.function_call:
                             tool_calls.append(part.function_call.name)
                         if hasattr(part, "text") and part.text:
-                            final_text += part.text
+                            final_text = part.text  # keep only the last text (summarized response)
         except Exception:
             log.error(f"[ERROR] Exception during runner.run_async on turn: '{user_message}'")
             log.error(traceback.format_exc())
