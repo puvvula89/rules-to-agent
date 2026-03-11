@@ -26,6 +26,23 @@ _GLOBAL_INTENTS_TEXT = '\n'.join(
     f'  - {g["trigger"]}: {g["description"]}' for g in _GLOBAL_INTENTS
 )
 
+# Build fsm_advance docstring examples dynamically from YAML extract_variables.
+# Groups all fields by context key so examples reflect the actual schema.
+def _build_fsm_advance_examples() -> str:
+    groups: dict = {}
+    for var_path in fsm.get_all_extract_variables():
+        parts = var_path.split('.')
+        if len(parts) == 2:
+            ctx_key, field = parts
+            groups.setdefault(ctx_key, []).append(field)
+    lines = []
+    for ctx_key, fields in groups.items():
+        example = {ctx_key: {f: "<value>" for f in fields}}
+        lines.append(f'              {json.dumps(example)}')
+    return '\n'.join(lines)
+
+_FSM_ADVANCE_EXAMPLES = _build_fsm_advance_examples()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -99,15 +116,8 @@ def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
     It updates the workflow state and tells you what to do next.
 
     Args:
-        data: Structured data from the tool response, nested by context group. Examples:
-              {"account_context": {"is_authorized": true}}
-              {"account_context": {"standing": "GOOD"}}
-              {"line_context": {"selected_number": "555-1234"}}
-              {"line_context": {"is_eligible": true}}
-              {"trade_in_context": {"wants_trade_in": false}}
-              {"trade_in_context": {"final_condition": "Good", "quote_value": 200}}
-              {"new_device_context": {"selection": "iPhone 16", "price": 1000}}
-              {"order_context": {"order_id": "ORD-123", "error": false}}
+        data: Structured data from the tool response, nested by context group.
+{_FSM_ADVANCE_EXAMPLES}
 
     Returns:
         workflow_advanced_to: the new FSM state name
@@ -130,6 +140,9 @@ def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
         "next_objective": fsm.get_objective(new_state),
         "data_still_needed": fsm.get_extract_variables(new_state),
     }
+
+
+fsm_advance.__doc__ = fsm_advance.__doc__.replace('{_FSM_ADVANCE_EXAMPLES}', _FSM_ADVANCE_EXAMPLES)
 
 
 # ---------------------------------------------------------------------------
