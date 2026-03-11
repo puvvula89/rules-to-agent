@@ -199,8 +199,8 @@ class TestMCPServer:
         assert result["error"] is False
 
     def test_detect_intent(self):
-        result = mcp_call("detect_intent", {"intent": "change_new_device"})
-        assert result == {"detected_intent": "change_new_device"}
+        result = mcp_call("detect_intent", {"intent": "intent_change_new_device"})
+        assert result == {"detected_intent": "intent_change_new_device"}
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +398,7 @@ class TestDetectIntentCallback:
             "new_device_context": {"selection": "Moto G", "price": 800},
             "order_context": {"user_confirmed": True},
         }
-        ctx = run_after_tool("detect_intent", {"detected_intent": "change_new_device"}, "FinalPricing", ledger)
+        ctx = run_after_tool("detect_intent", {"detected_intent": "intent_change_new_device"}, "FinalPricing", ledger)
         assert ctx.state["fsm_state"] == "NewUpgradeDeviceSelection"
         assert ctx.state["ledger"]["new_device_context"] == {}
         assert ctx.state["ledger"]["order_context"] == {}
@@ -412,7 +412,7 @@ class TestDetectIntentCallback:
             "new_device_context": {"selection": "Moto G"},
             "order_context": {},
         }
-        ctx = run_after_tool("detect_intent", {"detected_intent": "change_line"}, "FinalPricing", ledger)
+        ctx = run_after_tool("detect_intent", {"detected_intent": "intent_change_line"}, "FinalPricing", ledger)
         assert ctx.state["fsm_state"] == "LineToUpgrade"
         assert ctx.state["ledger"]["line_context"] == {}
         assert ctx.state["ledger"]["trade_in_context"] == {}

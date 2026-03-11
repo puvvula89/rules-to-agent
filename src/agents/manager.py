@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 
 fsm = WorkflowFSM(os.path.abspath("config/phone_upgrade.yaml"))
 
+# Loaded once at startup from YAML — no hardcoding of intent names in Python.
+_GLOBAL_INTENTS = fsm.get_global_intents()
+_GLOBAL_INTENTS_TEXT = '\n'.join(
+    f'  - {g["trigger"]}: {g["description"]}' for g in _GLOBAL_INTENTS
+)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -185,8 +191,8 @@ def before_model(
         'reach a point where you must ask the user something.\n'
         '5. Keep all responses warm, concise, and conversational. Never sound robotic.\n\n'
 
-        'CHANGE OF MIND — if the user changes a previous choice, call detect_intent(intent) '
-        'with one of: change_line, change_trade_in_device, change_new_device.'
+        f'CHANGE OF MIND — if the user changes a previous choice, call detect_intent(intent) '
+        f'passing the exact trigger name from this list:\n{_GLOBAL_INTENTS_TEXT}'
     )
 
     if llm_request.config:

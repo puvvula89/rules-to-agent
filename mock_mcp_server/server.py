@@ -90,7 +90,7 @@ def submit_order(account_number: str, phone_number: str, new_device: str, trade_
 
 @mcp.tool()
 def detect_intent(intent: str) -> dict:
-    """Signal a user change-of-mind. intent must be one of: change_line, change_trade_in_device, change_new_device."""
+    """Signal a user change-of-mind. Pass the exact trigger name as returned by the workflow configuration."""
     return {"detected_intent": intent}
 
 

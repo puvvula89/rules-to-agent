@@ -121,6 +121,17 @@ def test_terminal_state_stays(fsm):
 # Global intent transitions
 # ---------------------------------------------------------------------------
 
+def test_get_global_intents_loaded_from_yaml(fsm):
+    intents = fsm.get_global_intents()
+    assert len(intents) == 3
+    triggers = [g['trigger'] for g in intents]
+    assert 'intent_change_line' in triggers
+    assert 'intent_change_trade_in_device' in triggers
+    assert 'intent_change_new_device' in triggers
+    for g in intents:
+        assert g.get('description'), "Each global intent must have a non-empty description"
+
+
 def test_change_line_intent_resets_ledger(fsm):
     ledger = _ledger(
         line_context={"selected_number": "555-0000"},
@@ -128,7 +139,7 @@ def test_change_line_intent_resets_ledger(fsm):
         new_device_context={"selection": "Pixel 9"},
         order_context={"user_confirmed": True},
     )
-    new_state = fsm.fire_intent("FinalPricing", "change_line", ledger)
+    new_state = fsm.fire_intent("FinalPricing", "intent_change_line", ledger)
     assert new_state == "LineToUpgrade"
     assert ledger["line_context"] == {}
     assert ledger["trade_in_context"] == {}
@@ -142,7 +153,7 @@ def test_change_new_device_intent_resets_device(fsm):
         new_device_context={"selection": "Pixel 9", "price": 800},
         order_context={"user_confirmed": True},
     )
-    new_state = fsm.fire_intent("FinalPricing", "change_new_device", ledger)
+    new_state = fsm.fire_intent("FinalPricing", "intent_change_new_device", ledger)
     assert new_state == "NewUpgradeDeviceSelection"
     assert ledger["new_device_context"] == {}
     assert ledger["order_context"] == {}

@@ -27,22 +27,8 @@ def _make_condition(condition_str: str, ledger_keys: list):
 
 
 class FlowController:
-    """Model object for the transitions Machine. Holds state and memory-wipe callbacks."""
-
-    def clear_line_memory(self, event_data):
-        ledger = event_data.kwargs.get('ledger', {})
-        for k in ['line_context', 'trade_in_context', 'new_device_context', 'order_context']:
-            ledger[k] = {}
-
-    def clear_trade_in_memory(self, event_data):
-        ledger = event_data.kwargs.get('ledger', {})
-        for k in ['trade_in_context', 'order_context']:
-            ledger[k] = {}
-
-    def clear_new_device_memory(self, event_data):
-        ledger = event_data.kwargs.get('ledger', {})
-        for k in ['new_device_context', 'order_context']:
-            ledger[k] = {}
+    """Model object for the transitions Machine. Memory-wipe callbacks are generated dynamically."""
+    pass
 
 
 class WorkflowFSM:
@@ -67,16 +53,38 @@ class WorkflowFSM:
 
         self.controller = FlowController()
 
-        # Pre-process transitions: replace condition_string with a dynamic method on controller.
-        # transitions 0.9.x State/Transition don't accept arbitrary **kwargs.
+        # Pre-process transitions:
+        # - Strip custom YAML keys (condition_string, transition_type, clear_keys, description)
+        #   that are not recognised by the transitions library.
+        # - For condition_string: generate a condition closure and attach to controller.
+        # - For global transitions (transition_type==global): generate a memory-wipe closure
+        #   from clear_keys and wire it as the before callback.
         processed_transitions = []
         for i, tx in enumerate(self.config['transitions']):
             tx_copy = dict(tx)
+
+            # Strip all custom keys up front
             cond_str = tx_copy.pop('condition_string', None)
+            tx_copy.pop('transition_type', None)
+            tx_copy.pop('description', None)
+            clear_keys = tx_copy.pop('clear_keys', None)
+
             if cond_str:
                 method_name = f'_cond_{i}'
                 setattr(self.controller, method_name, _make_condition(cond_str, ledger_keys))
                 tx_copy['conditions'] = method_name
+
+            if clear_keys:
+                method_name = f'_clear_memory_{i}'
+                def _make_clearer(keys):
+                    def clearer(event_data):
+                        ledger = event_data.kwargs.get('ledger', {})
+                        for k in keys:
+                            ledger[k] = {}
+                    return clearer
+                setattr(self.controller, method_name, _make_clearer(clear_keys))
+                tx_copy['before'] = method_name
+
             processed_transitions.append(tx_copy)
 
         # Pass only state names to Machine (strip objective/extract_variables).
@@ -100,16 +108,24 @@ class WorkflowFSM:
             pass  # safety net
         return self.controller.state
 
-    def fire_intent(self, current_state: str, intent: str, ledger: dict) -> str:
-        """Fire a global intent trigger; clears relevant ledger keys in-place."""
+    def fire_intent(self, current_state: str, trigger_name: str, ledger: dict) -> str:
+        """Fire a global intent trigger by its full trigger name; clears relevant ledger keys in-place."""
         self.machine.set_state(current_state, model=self.controller)
-        trigger = getattr(self.controller, f'intent_{intent}', None)
+        trigger = getattr(self.controller, trigger_name, None)
         if trigger:
             try:
                 trigger(ledger=ledger)
             except Exception as e:
                 logger.warning(f"[FSM] Intent trigger failed: {e}")
         return self.controller.state
+
+    def get_global_intents(self) -> list:
+        """Return trigger name and description for all global transitions (transition_type==global)."""
+        return [
+            {'trigger': tx['trigger'], 'description': tx.get('description', '')}
+            for tx in self.config['transitions']
+            if tx.get('transition_type') == 'global'
+        ]
 
     def get_objective(self, state_name: str) -> str:
         return self._state_meta.get(state_name, {}).get('objective', 'No objective found.')
