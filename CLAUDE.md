@@ -20,7 +20,7 @@ Replace legacy telco rules engines with a Google ADK + YAML-driven Python FSM fo
 │  BRIDGE (Python — fully domain-agnostic)        │
 │  • before_model: injects dynamic system prompt  │
 │  • fsm_advance tool: updates ledger, fires FSM  │
-│  • after_tool: handles detect_intent only       │
+│  • detect_intent tool: handles change-of-mind   │
 │  • after_model: fallback JSON block parser      │
 └──────────────────────┬──────────────────────────┘
                        │ ledger dict
@@ -37,14 +37,14 @@ Replace legacy telco rules engines with a Google ADK + YAML-driven Python FSM fo
 
 | File | Role |
 |------|------|
-| `src/agents/agent.py` | ADK agent + 3 callbacks + fsm_advance tool; fully domain-agnostic |
+| `src/agents/agent.py` | ADK agent + 2 callbacks + fsm_advance + detect_intent tools; fully domain-agnostic |
 | `src/agents/orchestrator/fsm.py` | WorkflowFSM + FlowController; uses `transitions` library |
 | `config/phone_upgrade.yaml` | ALL business logic: states, transitions, conditions, objectives |
-| `mock_mcp_server/server.py` | FastMCP ASGI mock API server (12 tools) |
+| `mock_mcp_server/server.py` | FastMCP ASGI mock API server (11 domain tools) |
 | `deploy/app.py` | AdkApp wrapper for Agent Engine deployment |
 | `tests/test_fsm.py` | 21 FSM unit tests (no agent/LLM needed) |
-| `tests/test_agent_flow.py` | 48 callback integration tests (no LLM needed) |
-| `tests/test_e2e_live.py` | 4 E2E scenarios with real Gemini LLM + MCP server |
+| `tests/test_agent_flow.py` | 45 callback integration tests (no LLM needed) |
+| `tests/test_e2e_live.py` | 7 E2E scenarios with real Gemini LLM + MCP server |
 
 ## What Lives Where
 
@@ -61,15 +61,24 @@ Replace legacy telco rules engines with a Google ADK + YAML-driven Python FSM fo
 
 ## Critical Implementation Notes
 
-### Three Callbacks + fsm_advance Tool
+### Two Callbacks + Two ADK FunctionTools
 
-- `before_model` — injects dynamic system instruction: `BRAND_INSTRUCTION` (constant Verizon/Alex persona) + per-state objective + `fsm_advance` call example + global intents list (loaded from YAML) + `RESPONSE RULES` block instructing the LLM to stay silent during tool execution and speak once after all tools complete. No tool filtering.
-- `after_tool` — **only handles `detect_intent`**; calls `fsm.fire_intent()` with the full trigger name. All other tools: passes response through unchanged.
+- `before_model` — builds a dynamic system instruction each turn: 5 static named prompt contracts (built once at startup) + 3-line `WHERE YOU ARE` block (current state, objective, fsm_advance example). No tool filtering.
 - `after_model` — **fallback only**. Parses ` ```json``` ` block from LLM text if no function calls were made; deep-merges into ledger; cascade-advances FSM.
-- `fsm_advance` (ADK FunctionTool) — **primary FSM advancement mechanism**. LLM calls this explicitly after every domain tool call. Normalises boolean strings, deep-merges data into ledger, fires `fsm.evaluate()`, returns `{workflow_advanced_to, next_objective, data_still_needed}`.
+- `fsm_advance` (ADK FunctionTool) — **primary FSM advancement mechanism**. LLM calls this explicitly after every MCP tool call. Normalises boolean strings, deep-merges data into ledger, fires `fsm.evaluate()`, returns `{workflow_advanced_to, next_objective, fields_to_collect, next_action}`. `next_action` is `CONTINUE` (call next tool) or `ASK_USER` (stop and respond).
+- `detect_intent` (ADK FunctionTool) — handles change-of-mind rewinding. LLM calls this when user changes a prior choice. Calls `fsm.fire_intent()` directly; does **not** require a follow-up `fsm_advance` call.
+
+### Prompt Contracts (5 Static + 1 Dynamic)
+Built once at startup; `before_model` only rebuilds the dynamic section:
+- `_BRAND` — Verizon/Alex persona and voice
+- `_TOOL_CONTRACT` — MCP tool → `fsm_advance` pattern; `detect_intent` exception
+- `_HISTORY_CONTRACT` — scan conversation history before asking user for anything
+- `_CONTINUATION_CONTRACT` — `CONTINUE` → call next tool immediately; `ASK_USER` → respond once
+- `_CHANGE_OF_MIND` — loaded from YAML via `get_global_intents()`; lists intent trigger names
+- `WHERE YOU ARE` — current state, objective, fsm_advance example (rebuilt each turn)
 
 ### Slot-Filling Loop
-The LLM is instructed to loop `tool → fsm_advance → tool → fsm_advance` within a single turn, advancing as long as it has the data. It pauses only when `data_still_needed` contains fields the user hasn't provided yet.
+The LLM loops `MCP tool → fsm_advance → MCP tool → fsm_advance` within a single turn, advancing as long as it has the data. It pauses (speaks to user) only when `next_action=ASK_USER` is returned, indicating a terminal state or no remaining `fields_to_collect`.
 
 ### FSM API
 - `fsm.evaluate(current_state, ledger)` → new_state
@@ -78,6 +87,7 @@ The LLM is instructed to loop `tool → fsm_advance → tool → fsm_advance` wi
 - `fsm.get_extract_variables(state_name)` → list[str]
 - `fsm.get_all_extract_variables()` → deduplicated list of all `context.field` paths across all states
 - `fsm.get_global_intents()` → list of `{trigger, description}` for all `transition_type: global` transitions
+- `fsm.is_terminal(state_name)` → True if state has no outgoing non-global transitions (derived from YAML — no hardcoded state names in Python)
 
 ### Session State
 Stored in `tool_context.state` / `callback_context.state`:
@@ -173,20 +183,41 @@ src/
 ```
 
 ## Current Status
-All phases complete. 69 tests pass (21 FSM unit + 48 agent flow integration). E2E live tests pass when run with valid GCP credentials + MCP server.
+All phases complete. 66 tests pass (21 FSM unit + 45 agent flow integration). E2E live tests pass when run with valid GCP credentials + MCP server.
 
 **Completed work:**
 - Phase 1–4: FSM stateless, MCP server, ADK callbacks, dynamic FSM-LLM architecture
 - `fsm_advance` explicit tool for slot-filling loop; docstring generated dynamically from YAML
-- `BRAND_INSTRUCTION` constant — Verizon/Alex persona injected every turn
-- `RESPONSE RULES` block in prompt — LLM stays silent during tool calls, speaks once after
+- `_BRAND` constant — Verizon/Alex persona injected every turn
+- 5 named prompt contracts — clean, readable, maintainable system prompt structure
+- `CONTINUATION CONTRACT` — `next_action` (CONTINUE/ASK_USER) drives LLM silence vs. response
 - Boolean normalisation (`"true"` string → `True` bool)
 - `transition_type: global` in YAML to identify change-of-mind transitions
 - `clear_keys` in YAML drives memory-wipe closures — no hardcoded Python methods
 - `get_global_intents()` loads intent names + descriptions from YAML at startup
+- `is_terminal()` derived from YAML — no hardcoded terminal state names in Python
+- `detect_intent` moved from MCP server to ADK FunctionTool — framework concern, not domain
+- `after_tool` callback removed entirely — `detect_intent` as ADK tool eliminates MCP round-trip
 - `fire_intent` uses full trigger name directly (no `intent_` prefix prepend)
 - `_GLOBAL_INTENTS_TEXT` injected into system prompt dynamically
-- Restructured to ADK standard layout (`agent.py`, orchestrator inside agent package)
+
+## Agent Behavioral Issues Fixed (2026-03-12)
+Three LLM behavioral failures were identified and fixed with prompt + architecture changes:
+
+### Issue 1: Re-asking for already-provided information
+**Symptom**: Agent asks "What phone line do you want to upgrade?" even when user said it in the first message.
+**Root cause**: `fields_to_collect` return from `fsm_advance` caused LLM to ask user rather than scan history.
+**Fix**: Added `HISTORY CONTRACT` — LLM must scan full conversation history before asking; if value already known, call the appropriate domain tool immediately.
+
+### Issue 2: Agent pausing mid-flow (requires nudge)
+**Symptom**: After calling `pricing`, agent stops and waits for user instead of calling `fsm_advance` and continuing.
+**Root cause**: LLM didn't treat `fsm_advance` as mandatory after every MCP tool call.
+**Fix**: Added `TOOL CONTRACT` with explicit pattern (`MCP tool → fsm_advance → MCP tool → fsm_advance`); `next_action` return field from `fsm_advance` (CONTINUE/ASK_USER) gives LLM a binary signal; `CONTINUATION CONTRACT` maps CONTINUE → call next tool immediately, ASK_USER → respond once then stop.
+
+### Issue 3: Front-loaded information not used downstream
+**Symptom**: User says "I want to upgrade 555-1234 to iPhone 16" at the start; agent re-asks for phone number later.
+**Root cause**: FSM hadn't reached LineToUpgrade state yet when user provided the phone number; LLM didn't think to use it later.
+**Fix**: `HISTORY CONTRACT` instructs LLM to look back in conversation history and call the domain tool with the already-known value instead of asking.
 
 **Next steps:**
 - Deploy to Agent Engine (Phase 3 — `deploy/app.py` ready)
