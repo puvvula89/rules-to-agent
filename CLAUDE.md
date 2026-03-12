@@ -43,7 +43,7 @@ Replace legacy telco rules engines with a Google ADK + YAML-driven Python FSM fo
 | `mock_mcp_server/server.py` | FastMCP ASGI mock API server (12 tools) |
 | `deploy/app.py` | AdkApp wrapper for Agent Engine deployment |
 | `tests/test_fsm.py` | 21 FSM unit tests (no agent/LLM needed) |
-| `tests/test_agent_flow.py` | 68 callback integration tests (no LLM needed) |
+| `tests/test_agent_flow.py` | 48 callback integration tests (no LLM needed) |
 | `tests/test_e2e_live.py` | 4 E2E scenarios with real Gemini LLM + MCP server |
 
 ## What Lives Where
@@ -63,7 +63,7 @@ Replace legacy telco rules engines with a Google ADK + YAML-driven Python FSM fo
 
 ### Three Callbacks + fsm_advance Tool
 
-- `before_model` — injects dynamic system instruction: `BRAND_INSTRUCTION` (constant Verizon/Alex persona) + per-state objective + `fsm_advance` call example + global intents list (loaded from YAML). No tool filtering.
+- `before_model` — injects dynamic system instruction: `BRAND_INSTRUCTION` (constant Verizon/Alex persona) + per-state objective + `fsm_advance` call example + global intents list (loaded from YAML) + `RESPONSE RULES` block instructing the LLM to stay silent during tool execution and speak once after all tools complete. No tool filtering.
 - `after_tool` — **only handles `detect_intent`**; calls `fsm.fire_intent()` with the full trigger name. All other tools: passes response through unchanged.
 - `after_model` — **fallback only**. Parses ` ```json``` ` block from LLM text if no function calls were made; deep-merges into ledger; cascade-advances FSM.
 - `fsm_advance` (ADK FunctionTool) — **primary FSM advancement mechanism**. LLM calls this explicitly after every domain tool call. Normalises boolean strings, deep-merges data into ledger, fires `fsm.evaluate()`, returns `{workflow_advanced_to, next_objective, data_still_needed}`.
@@ -76,6 +76,7 @@ The LLM is instructed to loop `tool → fsm_advance → tool → fsm_advance` wi
 - `fsm.fire_intent(current_state, trigger_name, ledger)` → new_state (takes **full trigger name**, e.g. `intent_change_new_device`; clears ledger keys in-place)
 - `fsm.get_objective(state_name)` → str
 - `fsm.get_extract_variables(state_name)` → list[str]
+- `fsm.get_all_extract_variables()` → deduplicated list of all `context.field` paths across all states
 - `fsm.get_global_intents()` → list of `{trigger, description}` for all `transition_type: global` transitions
 
 ### Session State
@@ -159,19 +160,33 @@ Error terminals: `EndUnauthorized`, `EndBadStanding`, `EndNotEligible`, `EndOrde
 
 Global intents (change-of-mind, full trigger names): `intent_change_line`, `intent_change_trade_in_device`, `intent_change_new_device`
 
+## Project Structure
+
+```
+src/
+    agents/                  ← ADK agent package (adk web src/)
+        __init__.py          ← exports root_agent for ADK discovery
+        agent.py             ← agent + callbacks + fsm_advance tool
+        orchestrator/        ← FSM sub-package (inside agent package per ADK standard)
+            __init__.py
+            fsm.py
+```
+
 ## Current Status
-All phases complete. 89 tests pass (21 FSM unit + 68 agent flow integration). E2E live tests pass (3/4 verified; happy path with trade-in assertion fixed).
+All phases complete. 69 tests pass (21 FSM unit + 48 agent flow integration). E2E live tests pass when run with valid GCP credentials + MCP server.
 
 **Completed work:**
 - Phase 1–4: FSM stateless, MCP server, ADK callbacks, dynamic FSM-LLM architecture
-- `fsm_advance` explicit tool for slot-filling loop
+- `fsm_advance` explicit tool for slot-filling loop; docstring generated dynamically from YAML
 - `BRAND_INSTRUCTION` constant — Verizon/Alex persona injected every turn
+- `RESPONSE RULES` block in prompt — LLM stays silent during tool calls, speaks once after
 - Boolean normalisation (`"true"` string → `True` bool)
 - `transition_type: global` in YAML to identify change-of-mind transitions
 - `clear_keys` in YAML drives memory-wipe closures — no hardcoded Python methods
 - `get_global_intents()` loads intent names + descriptions from YAML at startup
 - `fire_intent` uses full trigger name directly (no `intent_` prefix prepend)
 - `_GLOBAL_INTENTS_TEXT` injected into system prompt dynamically
+- Restructured to ADK standard layout (`agent.py`, orchestrator inside agent package)
 
 **Next steps:**
 - Deploy to Agent Engine (Phase 3 — `deploy/app.py` ready)
