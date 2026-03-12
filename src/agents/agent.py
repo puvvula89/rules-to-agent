@@ -85,11 +85,11 @@ def _normalize_booleans(obj):
 
 
 # ---------------------------------------------------------------------------
-# fsm_advance — internal ADK tool (LLM calls this after each domain tool)
+# fsm_advance — internal ADK tool (LLM calls this after each MCP tool)
 # ---------------------------------------------------------------------------
 
 def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
-    """Advance the workflow state with data collected from a domain tool.
+    """Advance the workflow state with data collected from an MCP tool.
 
     WHEN TO CALL:
       After every MCP tool call, immediately and without exception.
@@ -105,7 +105,7 @@ def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
         next_objective: what you must accomplish next
         fields_to_collect: fields required for the next step — scan conversation
             history first; if the value is already known, call the appropriate
-            domain tool with it immediately rather than asking the user again.
+            MCP tool with it immediately rather than asking the user again.
         next_action: CONTINUE means call the next tool now; ASK_USER means the
             workflow needs new input from the user.
     """
