@@ -482,7 +482,7 @@ class TestFsmAdvanceTool:
         result = fsm_advance({"account_context": {"is_authorized": True}}, ctx)
         assert result["workflow_advanced_to"] == "AccountStandingCheck"
         assert "standing" in result["next_objective"].lower()
-        assert "account_context.standing" in result["data_still_needed"]
+        assert "account_context.standing" in result["fields_to_collect"]
 
     def test_deep_merge_preserves_existing_ledger(self):
         ledger = _empty_ledger()
