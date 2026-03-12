@@ -263,6 +263,226 @@ async def run_change_of_mind():
     log.info(f"✓ Change of mind handled: {state}")
 
 
+async def run_line_provided_in_first_message():
+    """
+    Issue 1: User provides line number in the SAME message as account/PIN.
+
+    After auth + standing are verified in that single turn, the agent MUST check
+    eligibility for the provided line WITHOUT asking 'which line do you want to upgrade?'
+
+    Failure mode being tested: agent advances Auth→AccountStanding→LineToUpgrade
+    but then asks 'which line?' even though the user already said '555-111-2222'.
+    """
+    from agents.agent import root_agent
+
+    session = AgentSession(root_agent)
+    await session.start()
+
+    # Turn 1: account, PIN, AND line all in one message
+    response = await session.send(
+        "Hi, I want to upgrade line 555-111-2222. My account number is 1234 and PIN is 5678."
+    )
+
+    final_state = session.fsm_state()
+    ledger = session.ledger()
+    log.info(f"  [CHECK] FSM after turn 1: {final_state}")
+    log.info(f"  [CHECK] Ledger: {ledger}")
+    log.info(f"  [CHECK] Agent response: {response[:200]}")
+
+    # Primary assertion: FSM must have advanced past LineToUpgrade.
+    # The agent had account+PIN+line — it should have run verify_auth → check_standing
+    # → set_line → check_eligibility in one slot-filling turn.
+    assert final_state not in ("Auth", "AccountStandingCheck", "LineToUpgrade"), (
+        f"Agent should have advanced past LineToUpgrade using the provided line, "
+        f"but got {final_state}. This means it stopped and asked for the line."
+    )
+
+    # Ledger assertion: line must be captured
+    line_ctx = ledger.get("line_context", {})
+    assert line_ctx.get("selected_number") is not None, (
+        f"line_context.selected_number missing from ledger — agent never recorded the line. "
+        f"Ledger: {ledger}"
+    )
+    assert "2222" in str(line_ctx.get("selected_number", "")), (
+        f"Expected 555-111-2222 in ledger, got: {line_ctx.get('selected_number')}"
+    )
+
+    # Soft assertion: response should NOT be asking for the line
+    resp_lower = response.lower()
+    assert "which line" not in resp_lower and "what line" not in resp_lower, (
+        f"Agent re-asked 'which line' even though 555-111-2222 was provided upfront: {response[:300]}"
+    )
+
+    log.info("\n✓ Line-provided-upfront scenario PASSED")
+
+
+async def run_front_loaded_device_and_tradein_intent():
+    """
+    Issue 3: User states the new device AND trade-in intent BEFORE providing auth.
+
+    Expected flow:
+      Turn 1: 'I want to upgrade to iPhone 16. I also want to trade in my iPhone 13.'
+              → FSM stays at Auth; agent greets and asks for account/PIN.
+      Turn 2: 'Account 1234, PIN 5678.'
+              → Auth+Standing done → FSM at LineToUpgrade.
+              → Agent asks ONLY for line number (does NOT re-ask about device or trade-in).
+      Turn 3: 'Line 555-777-8888.'
+              → Agent checks eligibility → recognises trade-in intent from history
+              → calls set_trade_in_preference(True) → advances to DeviceTradeInChecks
+              → asks for condition ONLY (does NOT ask 'do you want to trade in?').
+
+    Failure modes being tested:
+      - Agent re-asks 'do you want to trade in?' (already answered in turn 1)
+      - Agent re-asks 'which device are you upgrading to?' (already answered in turn 1)
+      - Ledger never populated with trade_in_context.wants_trade_in = True
+    """
+    from agents.agent import root_agent
+
+    session = AgentSession(root_agent)
+    await session.start()
+
+    # Turn 1: device + trade-in intent BEFORE auth
+    response = await session.send(
+        "Hi! I want to upgrade to an iPhone 16. I also want to trade in my current iPhone 13."
+    )
+    assert session.fsm_state() == "Auth", (
+        f"Expected FSM=Auth (account/PIN not yet provided), got {session.fsm_state()}"
+    )
+    resp_lower = response.lower()
+    assert "account" in resp_lower or "pin" in resp_lower, (
+        f"Expected agent to ask for account/PIN in turn 1, got: {response[:200]}"
+    )
+    log.info(f"  [T1] FSM: {session.fsm_state()} | Response asks for account/PIN: OK")
+
+    # Turn 2: account + PIN
+    response = await session.send("Account 1234, PIN 5678.")
+    assert session.fsm_state() in ("LineToUpgrade", "CheckLineUpgradeEligibility"), (
+        f"Expected LineToUpgrade after auth+standing, got {session.fsm_state()}"
+    )
+    # Agent should ask for line — nothing else. It already knows the device and trade-in intent.
+    resp_lower = response.lower()
+    assert "line" in resp_lower, (
+        f"Expected agent to ask for line number in turn 2, got: {response[:200]}"
+    )
+    # Soft check: it should NOT be asking about trade-in at this point
+    if "trade" in resp_lower and "do you want" in resp_lower:
+        log.info(f"  [T2 WARN] Agent re-asked about trade-in even though user already stated intent")
+    log.info(f"  [T2] FSM: {session.fsm_state()} | Asks for line: OK")
+
+    # Turn 3: provide line
+    response = await session.send("Line 555-777-8888.")
+
+    final_state = session.fsm_state()
+    ledger = session.ledger()
+    log.info(f"  [T3] FSM: {final_state}")
+    log.info(f"  [T3] Ledger: {ledger}")
+    log.info(f"  [T3] Agent response: {response[:300]}")
+
+    # Primary: agent should have advanced past eligibility check into the trade-in path
+    assert final_state not in ("Auth", "AccountStandingCheck", "LineToUpgrade", "CheckLineUpgradeEligibility"), (
+        f"Expected FSM to advance into trade-in path after providing line, got {final_state}"
+    )
+
+    # Ledger: trade-in intent must have been recorded (from conversation, not from asking again)
+    trade_ctx = ledger.get("trade_in_context", {})
+    assert trade_ctx.get("wants_trade_in") == True, (
+        f"Expected trade_in_context.wants_trade_in=True from conversation history, "
+        f"got trade_ctx={trade_ctx}. Agent should have used the user's earlier statement."
+    )
+
+    # Ledger: new device should be recorded
+    new_dev_ctx = ledger.get("new_device_context", {})
+    if new_dev_ctx.get("selection"):
+        assert "iphone 16" in str(new_dev_ctx["selection"]).lower(), (
+            f"Expected iPhone 16 in new_device_context.selection, got: {new_dev_ctx['selection']}"
+        )
+
+    # Soft check: agent should NOT be re-asking 'do you want to trade in'
+    resp_lower = response.lower()
+    if "do you want to trade" in resp_lower or "would you like to trade" in resp_lower:
+        log.info(
+            f"  [T3 WARN] Agent re-asked trade-in intent even though user stated it upfront. "
+            f"Response: {response[:200]}"
+        )
+
+    # If FSM is at DeviceTradeInChecks, agent should be asking about condition (not trade-in intent)
+    if final_state == "DeviceTradeInChecks":
+        assert "condition" in resp_lower or "shape" in resp_lower or "excellent" in resp_lower \
+               or "good" in resp_lower or "poor" in resp_lower, (
+            f"Expected agent to ask about device condition (not re-ask trade-in intent), "
+            f"got: {response[:300]}"
+        )
+
+    log.info("\n✓ Front-loaded device + trade-in intent scenario PASSED")
+
+
+async def run_auto_progression_no_nudge():
+    """
+    Issue 2: Agent must NOT pause and wait for a nudge mid-flow.
+
+    Scenario: user provides BOTH trade-in device+condition AND new device name in a
+    single message. The agent should:
+      - call record_condition → fsm_advance (→ TradeInPricing)
+      - call pricing (trade-in) → fsm_advance (→ NewUpgradeDeviceSelection)
+      - recognise new device from the message → call select_device → fsm_advance (→ NewUpgradeDevicePricing)
+      - call pricing (new device) → fsm_advance (→ FinalPricing)
+    All in ONE turn, without producing 'Let me now get the pricing...' and stopping.
+
+    Failure mode being tested: agent says 'Let me get the pricing for your new device'
+    as a response and then waits for the user to say 'ok' before fetching the price.
+    """
+    from agents.agent import root_agent
+
+    session = AgentSession(root_agent)
+    await session.start()
+
+    # Setup: get auth+standing+line out of the way
+    await session.send("Account 1234, PIN 5678.")
+    await session.send("I want to upgrade line 555-555-0001.")
+
+    # Confirm at VerifyTradeIn before the critical turn
+    state_before = session.fsm_state()
+    assert state_before in ("VerifyTradeIn", "DeviceTradeInChecks", "CheckLineUpgradeEligibility"), (
+        f"Expected to be at or near VerifyTradeIn before critical turn, got {state_before}"
+    )
+
+    # Critical turn: give ALL remaining device info in one message.
+    # Agent should auto-advance all the way to FinalPricing without waiting for nudges.
+    response = await session.send(
+        "Yes, I want to trade in my iPhone 13 — it's in Good condition. "
+        "I'd like to get the iPhone 16 as my new device."
+    )
+
+    final_state = session.fsm_state()
+    ledger = session.ledger()
+    log.info(f"  [CHECK] FSM after all-device-info turn: {final_state}")
+    log.info(f"  [CHECK] Ledger: {ledger}")
+    log.info(f"  [CHECK] Agent response: {response[:300]}")
+
+    # Primary assertion: must have reached FinalPricing (or beyond) in a SINGLE turn.
+    # If agent is still at TradeInPricing or NewUpgradeDeviceSelection, it paused mid-flow.
+    assert final_state in ("FinalPricing", "ProcessOrder", "EndSuccess"), (
+        f"Expected FinalPricing after providing full device info (no nudge), got {final_state}. "
+        f"Agent stopped mid-flow and waited for a nudge."
+    )
+
+    # Ledger: trade-in quote must have been fetched (not just recorded)
+    trade_ctx = ledger.get("trade_in_context", {})
+    assert trade_ctx.get("quote_value") is not None, (
+        f"Expected trade-in quote_value in ledger (auto-fetched via pricing tool), "
+        f"got trade_ctx={trade_ctx}"
+    )
+
+    # Ledger: new device price must have been fetched
+    new_dev_ctx = ledger.get("new_device_context", {})
+    assert new_dev_ctx.get("price") is not None, (
+        f"Expected new_device_context.price in ledger (auto-fetched via pricing tool), "
+        f"got new_dev_ctx={new_dev_ctx}"
+    )
+
+    log.info("\n✓ Auto-progression (no nudge) scenario PASSED")
+
+
 # ---------------------------------------------------------------------------
 # pytest entry points
 # ---------------------------------------------------------------------------
@@ -319,16 +539,40 @@ async def test_change_of_mind():
     await run_change_of_mind()
 
 
+@pytest.mark.asyncio
+@pytest.mark.live
+async def test_line_provided_in_first_message():
+    """Issue 1: Line number given with account/PIN — agent must not re-ask for it."""
+    await run_line_provided_in_first_message()
+
+
+@pytest.mark.asyncio
+@pytest.mark.live
+async def test_front_loaded_device_and_tradein_intent():
+    """Issue 3: Device + trade-in intent given before auth — agent must use from history."""
+    await run_front_loaded_device_and_tradein_intent()
+
+
+@pytest.mark.asyncio
+@pytest.mark.live
+async def test_auto_progression_no_nudge():
+    """Issue 2: All device info in one turn — agent must auto-advance to FinalPricing."""
+    await run_auto_progression_no_nudge()
+
+
 # ---------------------------------------------------------------------------
 # Standalone runner
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     scenarios = {
-        "1": ("Happy path (trade-in)", run_happy_path_with_trade_in),
-        "2": ("No trade-in path",      run_no_trade_in_path),
-        "3": ("Unauthorized account",  run_unauthorized_path),
-        "4": ("Change of mind",        run_change_of_mind),
+        "1": ("Happy path (trade-in)",             run_happy_path_with_trade_in),
+        "2": ("No trade-in path",                  run_no_trade_in_path),
+        "3": ("Unauthorized account",              run_unauthorized_path),
+        "4": ("Change of mind",                    run_change_of_mind),
+        "5": ("Line provided in first message",    run_line_provided_in_first_message),
+        "6": ("Front-loaded device + trade-in",    run_front_loaded_device_and_tradein_intent),
+        "7": ("Auto-progression (no nudge)",       run_auto_progression_no_nudge),
     }
 
     log.info("Select scenario:")

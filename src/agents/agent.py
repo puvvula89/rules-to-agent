@@ -110,19 +110,25 @@ def _normalize_booleans(obj):
 # ---------------------------------------------------------------------------
 
 def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
-    """Advance the workflow after collecting data from a domain tool.
+    """Advance the workflow after collecting data from a domain tool OR from the conversation.
 
     Call this after EVERY domain tool call, passing the structured data you collected.
-    It updates the workflow state and tells you what to do next.
+    You may also call this directly with data you extracted from the user's messages
+    (without calling a domain tool first) when the user has already provided the needed values.
 
     Args:
-        data: Structured data from the tool response, nested by context group.
+        data: Structured data collected from a tool response or the user's message,
+              nested by context group.
 {_FSM_ADVANCE_EXAMPLES}
 
     Returns:
         workflow_advanced_to: the new FSM state name
         next_objective: what you must accomplish next
-        data_still_needed: list of data fields still required for the next step
+        fields_to_collect: fields required for the next step — IMPORTANT: scan the
+            ENTIRE conversation history for these values before asking the user.
+            If found in history, call the relevant domain tool or fsm_advance immediately
+            without asking. Only ask the user if the value is genuinely absent from
+            the conversation.
     """
     ledger = tool_context.state.get("ledger", {})
     normalized = _normalize_booleans(data)
@@ -138,7 +144,7 @@ def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
     return {
         "workflow_advanced_to": new_state,
         "next_objective": fsm.get_objective(new_state),
-        "data_still_needed": fsm.get_extract_variables(new_state),
+        "fields_to_collect": fsm.get_extract_variables(new_state),
     }
 
 
@@ -193,26 +199,40 @@ def before_model(
         f'CURRENT OBJECTIVE: {objective}\n\n'
 
         'WORKFLOW RULES:\n'
-        '1. Call the appropriate domain tool(s) to fulfill the current objective.\n'
-        f'2. After each domain tool call, call fsm_advance with the data you collected.\n'
+        '1. Before calling any tool, SCAN THE ENTIRE CONVERSATION HISTORY for values '
+        'the current objective needs. Users often provide information early — a device '
+        'name, a line number, a trade-in preference — before you have reached that step.\n'
+        '2. For each field listed in fields_to_collect:\n'
+        '   a. If the value exists ANYWHERE in conversation history → use it immediately '
+        '(call the domain tool with that value, or call fsm_advance directly with it).\n'
+        '   b. If the value is genuinely absent from the conversation → ask the user.\n'
+        '   NEVER ask for information the user has already provided.\n'
+        f'3. After each domain tool call, call fsm_advance with the data you collected.\n'
         f'   Example for this step: fsm_advance(data={example_json})\n'
-        '3. fsm_advance returns the next objective and what data is still needed.\n'
-        '   - If you already have all needed information from the conversation, '
-        'call the next tool immediately — do NOT ask the user for info you already have.\n'
-        '   - If you need information the user has not yet provided, ask naturally.\n'
-        '4. Continue this loop (tool → fsm_advance → tool → fsm_advance) until you '
-        'reach a point where you must ask the user something.\n\n'
+        '4. You may also call fsm_advance directly (without a domain tool) when the user '
+        'has already stated the needed value in conversation — just pass the extracted data.\n'
+        '5. After fsm_advance returns, immediately check:\n'
+        '   - Do I have EVERYTHING needed for the next_objective from history or tools?\n'
+        '   - If YES → call the next tool immediately. Do NOT pause. Do NOT narrate.\n'
+        '   - If NO  → ask the user only for what is missing. Be specific and concise.\n'
+        '6. Continue this loop (tool → fsm_advance → tool → fsm_advance) until you '
+        'genuinely cannot proceed without new information from the user.\n\n'
 
         'RESPONSE RULES (CRITICAL — read carefully):\n'
         '- SILENCE during tool execution: Do NOT produce ANY text before, between, or '
-        'around tool calls. No greetings, no "let me check that", no status updates, '
-        'no narration of any kind while you are still making tool calls.\n'
+        'around tool calls. No greetings, no "let me check that", no "I\'ll now get the '
+        'pricing", no status updates, no narration of any kind while tools are running.\n'
+        '- NEVER produce a response like "Let me get the pricing for that" and then stop. '
+        'If you can call a tool, CALL IT. A response like that with no follow-up tool call '
+        'is a failure — you are making the user wait for no reason.\n'
         '- Speak ONCE, at the end: Only produce your single response AFTER every tool '
         'call for this turn is fully complete.\n'
-        '- Your response must be a SINGLE, COHESIVE message that summarises the outcome '
-        'of this entire turn. For example, if you verified auth AND checked standing in '
-        'one turn, say: "Welcome to Verizon! I\'m Alex. Your account has been verified '
-        'and your account is in great standing. Which line would you like to upgrade?"\n'
+        '- Your response must be a SINGLE, COHESIVE message that summarises ALL outcomes '
+        'of this turn and tells the user exactly what happens next or what you need from them.\n'
+        '- Example of a good response after auth+standing+eligibility all in one turn:\n'
+        '  "Welcome to Verizon! I\'m Alex. Your account is verified and in great standing, '
+        'and the line 555-111-2222 is eligible for an upgrade. Would you like to trade in '
+        'your current device?"\n'
         '- Never produce step-by-step narration. Synthesise all results into one '
         'natural, warm sentence or two.\n\n'
 
