@@ -263,7 +263,7 @@ class TestBeforeModelInstruction:
         assert "is_authorized" in req.config.system_instruction
 
     def test_system_instruction_contains_fsm_advance_instruction(self):
-        # New prompt tells LLM to call fsm_advance after each domain tool
+        # New prompt tells LLM to call fsm_advance after each MCP tool
         req = run_before_model("AccountStandingCheck")
         assert "fsm_advance" in req.config.system_instruction
 

@@ -49,7 +49,7 @@ log.addHandler(_file_handler)
 log.addHandler(_stdout_handler)
 
 # Also route internal module loggers (manager.py, fsm.py) to the same file.
-for _mod in ("agents.manager", "orchestrator.fsm"):
+for _mod in ("agents.agent", "agents.orchestrator.fsm"):
     _ml = logging.getLogger(_mod)
     _ml.setLevel(logging.DEBUG)
     _ml.propagate = False

@@ -189,7 +189,7 @@ _TOOL_CONTRACT = (
 _HISTORY_CONTRACT = (
     'HISTORY CONTRACT\n'
     '- Before asking the user for anything, scan the full conversation history.\n'
-    '- If the value is already there, call the appropriate domain tool with it immediately.\n'
+    '- If the value is already there, call the appropriate MCP tool with it immediately.\n'
     '  Never ask for information the user has already provided.\n\n'
 )
 
