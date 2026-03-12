@@ -43,10 +43,6 @@ def _build_fsm_advance_examples() -> str:
 
 _FSM_ADVANCE_EXAMPLES = _build_fsm_advance_examples()
 
-# States where the workflow is complete — no further tool calls needed.
-_TERMINAL_STATES = {"EndSuccess", "EndUnauthorized", "EndBadStanding", "EndNotEligible", "EndOrderFailed"}
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -145,8 +141,7 @@ def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
     logger.info(f"[FSM] {current_state} → {new_state} | data: {data}")
 
     fields = fsm.get_extract_variables(new_state)
-    is_terminal = new_state in _TERMINAL_STATES
-    next_action = "ASK_USER" if (is_terminal or not fields) else "CONTINUE"
+    next_action = "ASK_USER" if (fsm.is_terminal(new_state) or not fields) else "CONTINUE"
 
     return {
         "workflow_advanced_to": new_state,
@@ -216,13 +211,12 @@ def before_model(
         '   b. If the value is genuinely absent from the conversation → ask the user.\n'
         '   NEVER ask for information the user has already provided.\n'
         f'3. *** MANDATORY PATTERN — NO EXCEPTIONS ***\n'
-        f'   Every domain tool call (pricing, record_condition, set_line, check_eligibility,\n'
-        f'   verify_auth, check_standing, set_trade_in_preference, select_device,\n'
-        f'   confirm_order, submit_order) MUST be immediately followed by fsm_advance.\n'
+        f'   Every tool call that is NOT fsm_advance and NOT detect_intent MUST be\n'
+        f'   immediately followed by fsm_advance before any other action.\n'
         f'   Pattern: domain_tool → fsm_advance → domain_tool → fsm_advance\n'
         f'   Example for this step: fsm_advance(data={example_json})\n'
-        f'   Calling a domain tool WITHOUT following it with fsm_advance is an error.\n'
-        f'   Producing a text response while the last tool called was NOT fsm_advance is an error.\n'
+        f'   Calling any tool without following it with fsm_advance is an error.\n'
+        f'   Producing a text response when the last tool called was NOT fsm_advance is an error.\n'
         '4. You may also call fsm_advance directly (without a domain tool) when the user '
         'has already stated the needed value in conversation — just pass the extracted data.\n'
         '5. After fsm_advance returns, check next_action:\n'

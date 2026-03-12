@@ -143,3 +143,13 @@ class WorkflowFSM:
                     seen.add(var)
                     result.append(var)
         return result
+
+    def is_terminal(self, state_name: str) -> bool:
+        """Return True if state has no outgoing non-global transitions (derived from YAML)."""
+        for tx in self.config['transitions']:
+            if tx.get('transition_type') == 'global':
+                continue
+            source = tx.get('source', '')
+            if source == state_name or source == '*':
+                return False
+        return True
