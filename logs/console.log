@@ -1,13 +1,11 @@
-poetry run pytest tests/test_e2e_live.py -v -s
-
-================================================= test session starts ==================================================
+====================================================================== test session starts =======================================================================
 platform darwin -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- /Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/bin/python
 cachedir: .pytest_cache
 rootdir: /Users/wilsondayakar/Projects/vibecoding/rules-to-agent
 configfile: pyproject.toml
 plugins: anyio-4.12.1, asyncio-1.3.0
 asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 4 items                                                                                                      
+collected 7 items                                                                                                                                                
 
 tests/test_e2e_live.py::test_happy_path_with_trade_in 
 ============================================================
@@ -15,64 +13,81 @@ TEST: test_happy_path_with_trade_in
 ============================================================
 
 ============================================================
-Session started: e48a4ea6-8ff1-4331-b7ce-89fa9e5eecfb
+Session started: a6d158f3-936a-4f5e-9ba6-c9cc1c43f72c
 ============================================================
 
 [USER] Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.
-[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
-[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
   [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
   [FSM]   LineToUpgrade
-[AGENT] Great, thanks! Your account is in good standing. Which phone number would you like to upgrade?
-FAILED
+[AGENT] Welcome to Verizon! I'm Alex. Your account is verified and in great standing. Which phone line would you like to upgrade today?
+
+[USER] I want to upgrade the line 555-123-4567.
+  [TOOLS] check_eligibility → fsm_advance → fsm_advance
+  [FSM]   VerifyTradeIn
+[AGENT] That's great news! The line 555-123-4567 is eligible for an upgrade. Would you like to trade in your current device?
+
+[USER] Yes, I want to trade in my current device.
+  [TOOLS] fsm_advance
+  [FSM]   DeviceTradeInChecks
+[AGENT] Excellent! We can definitely help you with a trade-in. What is the make and model of the device you'd like to trade in, and what condition is it in? Please choose from Excellent, Good, or Poor.
+
+[USER] I'm trading in an iPhone 13 in Good condition.
+  [TOOLS] record_condition → fsm_advance → pricing → fsm_advance
+  [FSM]   NewUpgradeDeviceSelection
+[AGENT] Thanks for that information! Your trade-in value for the iPhone 13 in Good condition is $200. Now, let's find you a new phone. Which device would you like to upgrade to?
+
+[USER] I'd like to get the iPhone 16.
+  [TOOLS] select_device → fsm_advance → pricing → fsm_advance
+  [FSM]   FinalPricing
+[AGENT] Okay, you've selected the iPhone 16, which is $1000. After your $200 trade-in credit for the iPhone 13, your new total will be $800.
+
+Does that sound good to you? We can submit the order right now.
+
+[USER] Yes, I confirm the order. Please proceed.
+  [TOOLS] fsm_advance → submit_order → fsm_advance
+  [FSM]   EndSuccess
+[AGENT] Excellent! Your order has been placed successfully. Your order number is ORD-999888777. You'll receive an email confirmation shortly with all the details. Thank you for choosing Verizon
+
+============================================================
+FINAL FSM STATE: EndSuccess
+LEDGER: {'account_context': {'is_authorized': True, 'standing': 'GOOD'}, 'line_context': {'selected_number': '555-123-4567', 'is_eligible': True}, 'trade_in_context': {'wants_trade_in': True, 'final_condition': 'Good', 'quote_value': 200}, 'new_device_context': {'selection': 'iPhone 16', 'price': 1000}, 'order_context': {'user_confirmed': True, 'error': False, 'order_id': 'ORD-999888777'}}
+============================================================
+
+✓ Happy path with trade-in PASSED
+PASSED
 tests/test_e2e_live.py::test_no_trade_in_path 
 ============================================================
 TEST: test_no_trade_in_path
 ============================================================
 
 ============================================================
-Session started: 7a5bde97-ebb6-44b0-8224-bb32a9605ca5
+Session started: 03622553-62ac-4f8c-a276-2c9eff677dad
 ============================================================
 
 [USER] Account 1234, PIN 0000.
-[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
-[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
   [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
   [FSM]   LineToUpgrade
-[AGENT] Thanks for verifying your account. I see everything looks good here. Which phone line would you like to upgrade?
+[AGENT] Welcome to Verizon! I'm Alex. Your account is verified and in great standing. Which phone line would you like to upgrade today?
 
 [USER] Upgrade line 555-999-0000.
-[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-999-0000'}}
-[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
-  [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
+  [TOOLS] set_line → check_eligibility → fsm_advance → fsm_advance
   [FSM]   VerifyTradeIn
-[AGENT] Great news! That line is eligible for an upgrade.
-
-Would you like to trade in your current device?
+[AGENT] Excellent! The line 555-999-0000 is eligible for an upgrade. Would you like to trade in your current device?
 
 [USER] No, I don't want to trade in my old device.
-[FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'trade_in_context': {'wants_trade_in': False}}
   [TOOLS] set_trade_in_preference → fsm_advance
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] No problem. Which new device were you interested in today?
+[AGENT] No problem! What new device were you interested in?
 
 [USER] I want the Pixel 9.
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9'}}
-[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
-  [TOOLS] select_device → fsm_advance → pricing → fsm_advance
+  [TOOLS] select_device → pricing → fsm_advance → fsm_advance
   [FSM]   FinalPricing
-[AGENT] The total for your new Pixel 9 comes to $1000.
-
-Do you want to proceed with the order?
+[AGENT] You've selected the Pixel 9 for $1000. Since you are not trading in a device, your final price is $1000. Would you like to proceed with this order?
 
 [USER] Yes, confirm the order.
-[FSM] FinalPricing → ProcessOrder | data: {'order_context': {'user_confirmed': True}}
-[FSM] ProcessOrder → EndSuccess | data: {'order_context': {'order_id': 'ORD-999888777', 'error': False}}
   [TOOLS] confirm_order → fsm_advance → submit_order → fsm_advance
   [FSM]   EndSuccess
-[AGENT] Excellent! Your order has been placed. Your order number is ORD-999888777. You'll receive an email confirmation shortly with all the details.
-
-Is there anything else I can help you with today?
+[AGENT] Excellent! Your order has been placed successfully. Your order number is ORD-999888777. Thank you for choosing Verizon
 
 FINAL STATE: EndSuccess
 ✓ No trade-in path PASSED
@@ -83,14 +98,13 @@ TEST: test_unauthorized_path
 ============================================================
 
 ============================================================
-Session started: 26bb08fd-f92c-498b-b0b8-3c37cbf5eda8
+Session started: 7826c9d4-62a9-4f1b-9229-468bc725b44d
 ============================================================
 
 [USER] My account number is 9999 and PIN is 1234.
-[FSM] Auth → EndUnauthorized | data: {'account_context': {'is_authorized': False}}
   [TOOLS] verify_auth → fsm_advance
   [FSM]   EndUnauthorized
-[AGENT] I'm sorry, but I wasn't able to validate those credentials. Unfortunately, I can't proceed with an upgrade unless I can verify your account. Please feel free to get in touch again if you'd like to re-attempt the authentication process.
+[AGENT] I'm so sorry, but it looks like the account number or PIN you provided is incorrect. Unfortunately, I can't proceed without successful verification. Please double-check your information and feel free to start a new chat with me when you're ready. Thank you for your understanding.
 
 FINAL STATE: EndUnauthorized
 ✓ Unauthorized path reached: EndUnauthorized
@@ -101,110 +115,287 @@ TEST: test_change_of_mind
 ============================================================
 
 ============================================================
-Session started: 91047a56-9da7-44db-a8f3-d39f500451df
+Session started: 9adb74eb-3736-4714-bd70-2c83765a4938
 ============================================================
 
 [USER] Account 1234, PIN 5678.
-[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
-[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
   [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
   [FSM]   LineToUpgrade
-[AGENT] Thanks for that! Your account looks good. Which phone number would you like to upgrade?
+[AGENT] Welcome to Verizon! I'm Alex. Your account is verified and in great standing. Which phone line would you like to upgrade today?
 
 [USER] Line 555-111-2222.
-[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-111-2222'}}
-[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
   [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
   [FSM]   VerifyTradeIn
-[AGENT] Great! That line is eligible for an upgrade. Are you interested in trading in your current device?
+[AGENT] Great news! The line 555-111-2222 is eligible for an upgrade. Would you like to trade in your current device?
 
 [USER] No trade-in.
-[FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'trade_in_context': {'wants_trade_in': False}}
   [TOOLS] set_trade_in_preference → fsm_advance
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] No problem. What new device would you like to get with your upgrade?
+[AGENT] No problem at all. We can skip the trade-in. What new device would you like to get with your upgrade?
 
 [USER] I want the Pixel 9.
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9'}}
-[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
   [TOOLS] select_device → fsm_advance → pricing → fsm_advance
   [FSM]   FinalPricing
-[AGENT] Excellent choice. The final price for your new Pixel 9 will be $1000. 
-
-Does that sound good to you?
+[AGENT] Excellent choice! The Pixel 9 is a fantastic phone. The total for your new device is $1,000. Would you like to proceed with the order?
 
 [USER] Actually wait, I changed my mind. I want a different device.
-[FSM] Intent 'change_new_device': FinalPricing → NewUpgradeDeviceSelection
-[FSM] NewUpgradeDeviceSelection → NewUpgradeDeviceSelection | data: {'new_device_context': {'detected_intent': 'change_new_device'}}
   [TOOLS] detect_intent → fsm_advance
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] Of course. What new device would you like instead?
+[AGENT] Of course, we can change that for you. What new device would you like to look at instead?
 
 After change of mind: NewUpgradeDeviceSelection
 ✓ Change of mind handled: NewUpgradeDeviceSelection
 PASSED
+tests/test_e2e_live.py::test_line_provided_in_first_message 
+============================================================
+TEST: test_line_provided_in_first_message
+============================================================
 
-======================================================= FAILURES =======================================================
-____________________________________________ test_happy_path_with_trade_in _____________________________________________
+============================================================
+Session started: dd21c385-d61a-42e8-839d-f5b6d0e7b8d8
+============================================================
+
+[USER] Hi, I want to upgrade line 555-111-2222. My account number is 1234 and PIN is 5678.
+  [TOOLS] verify_auth → check_eligibility → set_line → fsm_advance → fsm_advance → fsm_advance → check_standing → fsm_advance → fsm_advance → fsm_advance
+  [FSM]   VerifyTradeIn
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I was able to verify your account and confirm that the line ending in 2222 is eligible for an upgrade.
+
+Would you like to trade in your current device on that line?
+  [CHECK] FSM after turn 1: VerifyTradeIn
+  [CHECK] Ledger: {'account_context': {'is_authorized': True, 'standing': 'GOOD'}, 'line_context': {'is_eligible': True, 'selected_number': '555-111-2222'}}
+  [CHECK] Agent response: Welcome to Verizon! I'm Alex, and I'm here to help. I was able to verify your account and confirm that the line ending in 2222 is eligible for an upgrade.
+
+Would you like to trade in your current devi
+
+✓ Line-provided-upfront scenario PASSED
+PASSED
+tests/test_e2e_live.py::test_front_loaded_device_and_tradein_intent 
+============================================================
+TEST: test_front_loaded_device_and_tradein_intent
+============================================================
+
+============================================================
+Session started: 461cea79-21f2-4603-9d2f-bbbc33ebfe77
+============================================================
+
+[USER] Hi! I want to upgrade to an iPhone 16. I also want to trade in my current iPhone 13.
+  [FSM]   Auth
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I can certainly assist you with upgrading to an iPhone 16 and trading in your iPhone 13. First, I need to verify your account. What is your account number and PIN?
+  [T1] FSM: Auth | Response asks for account/PIN: OK
+
+[USER] Account 1234, PIN 5678.
+  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
+  [FSM]   LineToUpgrade
+[AGENT] Great news! Your account is verified and in good standing. Which phone number would you like to upgrade?
+FAILED
+tests/test_e2e_live.py::test_auto_progression_no_nudge 
+============================================================
+TEST: test_auto_progression_no_nudge
+============================================================
+
+============================================================
+Session started: d6553964-ee1a-4bb9-846d-6dc5d6163674
+============================================================
+
+[USER] Account 1234, PIN 5678.
+  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
+  [FSM]   LineToUpgrade
+[AGENT] Welcome to Verizon! I'm Alex. Your account is verified and in good standing. Which phone line would you like to upgrade today?
+
+[USER] I want to upgrade line 555-555-0001.
+  [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
+  [FSM]   VerifyTradeIn
+[AGENT] Excellent! The line 555-555-0001 is eligible for an upgrade. Would you like to trade in your current device?
+
+[USER] Yes, I want to trade in my iPhone 13 — it's in Good condition. I'd like to get the iPhone 16 as my new device.
+  [TOOLS] set_trade_in_preference → fsm_advance → record_condition → fsm_advance → pricing
+  [FSM]   TradeInPricing
+[AGENT] 
+  [CHECK] FSM after all-device-info turn: TradeInPricing
+  [CHECK] Ledger: {'account_context': {'is_authorized': True, 'standing': 'GOOD'}, 'line_context': {'selected_number': '555-555-0001', 'is_eligible': True}, 'trade_in_context': {'wants_trade_in': True, 'final_condition': 'Good'}}
+  [CHECK] Agent response: 
+FAILED
+
+============================================================================ FAILURES ============================================================================
+__________________________________________________________ test_front_loaded_device_and_tradein_intent ___________________________________________________________
 
     @pytest.mark.asyncio
     @pytest.mark.live
-    async def test_happy_path_with_trade_in():
->       await run_happy_path_with_trade_in()
+    async def test_front_loaded_device_and_tradein_intent():
+        """Issue 3: Device + trade-in intent given before auth — agent must use from history."""
+>       await run_front_loaded_device_and_tradein_intent()
 
-tests/test_e2e_live.py:299: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_e2e_live.py:553: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
 
-    async def run_happy_path_with_trade_in():
-        """Full happy path: account 1234, trade in iPhone 13 Good, buy iPhone 16."""
-        from agents.manager import root_agent
+    async def run_front_loaded_device_and_tradein_intent():
+        """
+        Issue 3: User states the new device AND trade-in intent BEFORE providing auth.
+    
+        Expected flow:
+          Turn 1: 'I want to upgrade to iPhone 16. I also want to trade in my iPhone 13.'
+                  → FSM stays at Auth; agent greets and asks for account/PIN.
+          Turn 2: 'Account 1234, PIN 5678.'
+                  → Auth+Standing done → FSM at LineToUpgrade.
+                  → Agent asks ONLY for line number (does NOT re-ask about device or trade-in).
+          Turn 3: 'Line 555-777-8888.'
+                  → Agent checks eligibility → recognises trade-in intent from history
+                  → calls set_trade_in_preference(True) → advances to DeviceTradeInChecks
+                  → asks for condition ONLY (does NOT ask 'do you want to trade in?').
+    
+        Failure modes being tested:
+          - Agent re-asks 'do you want to trade in?' (already answered in turn 1)
+          - Agent re-asks 'which device are you upgrading to?' (already answered in turn 1)
+          - Ledger never populated with trade_in_context.wants_trade_in = True
+        """
+        from agents.agent import root_agent
     
         session = AgentSession(root_agent)
         await session.start()
     
-        # Turn 1: Auth
-        response = await session.send("Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.")
->       assert session.fsm_state() == "AccountStandingCheck", f"Expected AccountStandingCheck, got {session.fsm_state()}"
-E       AssertionError: Expected AccountStandingCheck, got LineToUpgrade
-E       assert 'LineToUpgrade' == 'AccountStandingCheck'
-E         
-E         - AccountStandingCheck
-E         + LineToUpgrade
+        # Turn 1: device + trade-in intent BEFORE auth
+        response = await session.send(
+            "Hi! I want to upgrade to an iPhone 16. I also want to trade in my current iPhone 13."
+        )
+        assert session.fsm_state() == "Auth", (
+            f"Expected FSM=Auth (account/PIN not yet provided), got {session.fsm_state()}"
+        )
+        resp_lower = response.lower()
+        assert "account" in resp_lower or "pin" in resp_lower, (
+            f"Expected agent to ask for account/PIN in turn 1, got: {response[:200]}"
+        )
+        log.info(f"  [T1] FSM: {session.fsm_state()} | Response asks for account/PIN: OK")
+    
+        # Turn 2: account + PIN
+        response = await session.send("Account 1234, PIN 5678.")
+        assert session.fsm_state() in ("LineToUpgrade", "CheckLineUpgradeEligibility"), (
+            f"Expected LineToUpgrade after auth+standing, got {session.fsm_state()}"
+        )
+        # Agent should ask for line — nothing else. It already knows the device and trade-in intent.
+        resp_lower = response.lower()
+>       assert "line" in resp_lower, (
+            f"Expected agent to ask for line number in turn 2, got: {response[:200]}"
+        )
+E       AssertionError: Expected agent to ask for line number in turn 2, got: Great news! Your account is verified and in good standing. Which phone number would you like to upgrade?
+E       assert 'line' in 'great news! your account is verified and in good standing. which phone number would you like to upgrade?'
 
-tests/test_e2e_live.py:160: AssertionError
--------------------------------------------------- Captured log call ---------------------------------------------------
-WARNING  google_genai.types:types.py:7460 Warning: there are non-text parts in the response: ['function_call'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
------------------------------------------------- Captured log teardown -------------------------------------------------
+tests/test_e2e_live.py:364: AssertionError
+----------------------------------------------------------------------- Captured log call ------------------------------------------------------------------------
+WARNING  google_adk.google.adk.tools.mcp_tool.mcp_session_manager:mcp_session_manager.py:328 Error cleaning up session session_no_headers: original event loop is closed, resources may be leaked.
+--------------------------------------------------------------------- Captured log teardown ----------------------------------------------------------------------
 WARNING  google_adk.google.adk.tools.mcp_tool.session_context:session_context.py:190 Error on session runner task:
-=================================================== warnings summary ===================================================
+_________________________________________________________________ test_auto_progression_no_nudge _________________________________________________________________
+
+    @pytest.mark.asyncio
+    @pytest.mark.live
+    async def test_auto_progression_no_nudge():
+        """Issue 2: All device info in one turn — agent must auto-advance to FinalPricing."""
+>       await run_auto_progression_no_nudge()
+
+tests/test_e2e_live.py:560: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    async def run_auto_progression_no_nudge():
+        """
+        Issue 2: Agent must NOT pause and wait for a nudge mid-flow.
+    
+        Scenario: user provides BOTH trade-in device+condition AND new device name in a
+        single message. The agent should:
+          - call record_condition → fsm_advance (→ TradeInPricing)
+          - call pricing (trade-in) → fsm_advance (→ NewUpgradeDeviceSelection)
+          - recognise new device from the message → call select_device → fsm_advance (→ NewUpgradeDevicePricing)
+          - call pricing (new device) → fsm_advance (→ FinalPricing)
+        All in ONE turn, without producing 'Let me now get the pricing...' and stopping.
+    
+        Failure mode being tested: agent says 'Let me get the pricing for your new device'
+        as a response and then waits for the user to say 'ok' before fetching the price.
+        """
+        from agents.agent import root_agent
+    
+        session = AgentSession(root_agent)
+        await session.start()
+    
+        # Setup: get auth+standing+line out of the way
+        await session.send("Account 1234, PIN 5678.")
+        await session.send("I want to upgrade line 555-555-0001.")
+    
+        # Confirm at VerifyTradeIn before the critical turn
+        state_before = session.fsm_state()
+        assert state_before in ("VerifyTradeIn", "DeviceTradeInChecks", "CheckLineUpgradeEligibility"), (
+            f"Expected to be at or near VerifyTradeIn before critical turn, got {state_before}"
+        )
+    
+        # Critical turn: give ALL remaining device info in one message.
+        # Agent should auto-advance all the way to FinalPricing without waiting for nudges.
+        response = await session.send(
+            "Yes, I want to trade in my iPhone 13 — it's in Good condition. "
+            "I'd like to get the iPhone 16 as my new device."
+        )
+    
+        final_state = session.fsm_state()
+        ledger = session.ledger()
+        log.info(f"  [CHECK] FSM after all-device-info turn: {final_state}")
+        log.info(f"  [CHECK] Ledger: {ledger}")
+        log.info(f"  [CHECK] Agent response: {response[:300]}")
+    
+        # Primary assertion: must have reached FinalPricing (or beyond) in a SINGLE turn.
+        # If agent is still at TradeInPricing or NewUpgradeDeviceSelection, it paused mid-flow.
+>       assert final_state in ("FinalPricing", "ProcessOrder", "EndSuccess"), (
+            f"Expected FinalPricing after providing full device info (no nudge), got {final_state}. "
+            f"Agent stopped mid-flow and waited for a nudge."
+        )
+E       AssertionError: Expected FinalPricing after providing full device info (no nudge), got TradeInPricing. Agent stopped mid-flow and waited for a nudge.
+E       assert 'TradeInPricing' in ('FinalPricing', 'ProcessOrder', 'EndSuccess')
+
+tests/test_e2e_live.py:464: AssertionError
+----------------------------------------------------------------------- Captured log call ------------------------------------------------------------------------
+WARNING  google_adk.google.adk.tools.mcp_tool.mcp_session_manager:mcp_session_manager.py:328 Error cleaning up session session_no_headers: original event loop is closed, resources may be leaked.
+--------------------------------------------------------------------- Captured log teardown ----------------------------------------------------------------------
+WARNING  google_adk.google.adk.tools.mcp_tool.session_context:session_context.py:190 Error on session runner task:
+======================================================================== warnings summary ========================================================================
 ../../../Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/types.py:43
   /Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/types.py:43: DeprecationWarning: '_UnionGenericAlias' is deprecated and slated for removal in Python 3.17
     VersionedUnionType = Union[builtin_types.UnionType, _UnionGenericAlias]
 
-tests/test_e2e_live.py:297
-  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:297: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+tests/test_e2e_live.py:519
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:519: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
     @pytest.mark.live
 
-tests/test_e2e_live.py:303
-  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:303: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+tests/test_e2e_live.py:525
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:525: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
     @pytest.mark.live
 
-tests/test_e2e_live.py:309
-  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:309: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+tests/test_e2e_live.py:531
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:531: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
     @pytest.mark.live
 
-tests/test_e2e_live.py:315
-  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:315: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+tests/test_e2e_live.py:537
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:537: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.live
+
+tests/test_e2e_live.py:543
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:543: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.live
+
+tests/test_e2e_live.py:550
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:550: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.live
+
+tests/test_e2e_live.py:557
+  /Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py:557: PytestUnknownMarkWarning: Unknown pytest.mark.live - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
     @pytest.mark.live
 
 tests/test_e2e_live.py::test_happy_path_with_trade_in
 tests/test_e2e_live.py::test_no_trade_in_path
 tests/test_e2e_live.py::test_unauthorized_path
 tests/test_e2e_live.py::test_change_of_mind
+tests/test_e2e_live.py::test_line_provided_in_first_message
+tests/test_e2e_live.py::test_front_loaded_device_and_tradein_intent
+tests/test_e2e_live.py::test_auto_progression_no_nudge
   /opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py:109: DeprecationWarning: Use `streamable_http_client` instead.
     self.gen = func(*args, **kwds)
 
-tests/test_e2e_live.py: 768 warnings
+tests/test_e2e_live.py: 1428 warnings
   /Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/tools/mcp_tool/mcp_toolset.py:313: DeprecationWarning: MCPTool class is deprecated, use `McpTool` instead.
     mcp_tool = MCPTool(
 
@@ -213,9 +404,7 @@ tests/test_e2e_live.py::test_happy_path_with_trade_in
     check_feature_enabled()
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-=============================================== short test summary info ================================================
-FAILED tests/test_e2e_live.py::test_happy_path_with_trade_in - AssertionError: Expected AccountStandingCheck, got LineToUpgrade
-================================ 1 failed, 3 passed, 778 warnings in 191.31s (0:03:11) =================================
-*** gpkg: This tool is configured to use Corp Airlock for package installs: http://go/corp-airlock
-*** gpkg: If Corp Airlock is breaking your workflow please report at: http://go/corp-airlock-feedback
-*** gpkg: Exceptions are available: http://go/corp-airlock#request-exception
+==================================================================== short test summary info =====================================================================
+FAILED tests/test_e2e_live.py::test_front_loaded_device_and_tradein_intent - AssertionError: Expected agent to ask for line number in turn 2, got: Great news! Your account is verified and in good standing. Which phone number would you...
+FAILED tests/test_e2e_live.py::test_auto_progression_no_nudge - AssertionError: Expected FinalPricing after providing full device info (no nudge), got TradeInPricing. Agent stopped mid-flow and waited for a nudge.
+===================================================== 2 failed, 5 passed, 1444 warnings in 422.73s (0:07:02) =====================================================
