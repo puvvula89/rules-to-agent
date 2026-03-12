@@ -31,7 +31,7 @@ The system has three layers that cleanly separate concerns:
 └────────────────────────────┬─────────────────────────────────────┘
                              │ fsm_advance(data)
 ┌────────────────────────────▼─────────────────────────────────────┐
-│  BRIDGE LAYER  (Python — manager.py, fully domain-agnostic)      │
+│  BRIDGE LAYER  (Python — agent.py, fully domain-agnostic)        │
 │  • before_model:  injects brand persona + current state          │
 │                   objective into system prompt each turn         │
 │  • fsm_advance:   ADK FunctionTool — normalises booleans,        │
@@ -62,7 +62,7 @@ Auth → AccountStandingCheck → LineToUpgrade → CheckLineUpgradeEligibility
 
 Error terminals: `EndUnauthorized`, `EndBadStanding`, `EndNotEligible`, `EndOrderFailed`
 
-Global intents (fire from any state): `change_line`, `change_trade_in_device`, `change_new_device`
+Global intents (fire from any state): `intent_change_line`, `intent_change_trade_in_device`, `intent_change_new_device`
 
 ---
 
@@ -121,7 +121,7 @@ Turn 1:  verify_auth → fsm_advance → check_standing → fsm_advance
 └─────────────────────────────────────────────┘
 ```
 
-To change brand voice → edit `BRAND_INSTRUCTION` in `manager.py`.
+To change brand voice → edit `BRAND_INSTRUCTION` in `agent.py`.
 To change what happens at a step → edit the YAML `objective` for that state.
 
 ### The Ledger
@@ -222,8 +222,8 @@ sequenceDiagram
     Note over User,FSM: FSM is at FinalPricing, device=Pixel 9
 
     User->>LLM: "Actually, I changed my mind on the device."
-    LLM->>AT: detect_intent("change_new_device")
-    AT->>FSM: fire_intent("change_new_device", ledger)
+    LLM->>AT: detect_intent("intent_change_new_device")
+    AT->>FSM: fire_intent("intent_change_new_device", ledger)
     Note over FSM: Clears new_device_context and order_context from ledger
     FSM-->>AT: "NewUpgradeDeviceSelection"
     AT-->>LLM: FSM state updated
@@ -282,14 +282,16 @@ mock_mcp_server/
 
 src/
   agents/
-    manager.py                # ADK root_agent definition
+    __init__.py               # Exports root_agent for ADK discovery
+    agent.py                  # ADK root_agent definition
                               #   BRAND_INSTRUCTION — global brand voice constant
                               #   fsm_advance — ADK FunctionTool (LLM↔FSM handoff)
                               #   before_model — injects system prompt each turn
                               #   after_tool — handles detect_intent only
                               #   after_model — fallback JSON-block parser
-  orchestrator/
-    fsm.py                    # WorkflowFSM (stateless) + FlowController
+    orchestrator/
+      __init__.py
+      fsm.py                  # WorkflowFSM (stateless) + FlowController
                               #   Loads YAML, builds transitions Machine,
                               #   exposes evaluate() and fire_intent()
 
@@ -350,7 +352,7 @@ Open two terminals:
 
 **Terminal 2 — ADK web UI**
 ```bash
-/usr/local/bin/poetry run adk web src/agents/
+/usr/local/bin/poetry run adk web src/
 # Opens http://localhost:8000 — chat UI + trace inspector
 ```
 
@@ -393,7 +395,7 @@ test_e2e_live.py     ← needs credentials + MCP server
 /usr/local/bin/poetry run pytest tests/test_fsm.py -v
 ```
 
-Tests all 15 FSM states, all transitions, and all global intent rewinds.
+Tests all 15 FSM states, all transitions, and all global intent rewinds. (21 tests)
 
 ### Integration tests — no LLM
 
@@ -442,7 +444,7 @@ Logs are written to `logs/flow-test.log` (overwritten each run).
 
 | Suite | Tests | Dependencies |
 |---|---|---|
-| `test_fsm.py` | 20 | None |
+| `test_fsm.py` | 21 | None |
 | `test_agent_flow.py` | 48 | Source only |
 | `test_e2e_live.py` | 4 | Credentials + MCP |
 
