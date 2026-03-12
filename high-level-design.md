@@ -105,7 +105,7 @@ The objective, not the tool list, guides the LLM's decisions.
 
 ### 4.3 Explicit FSM Advancement (Not Implicit)
 
-The LLM explicitly calls a dedicated `fsm_advance` tool after every domain tool call, passing the structured data it collected. The FSM then evaluates and returns the next objective.
+The LLM explicitly calls a dedicated `fsm_advance` tool after every MCP tool call, passing the structured data it collected. The FSM then evaluates and returns the next objective.
 
 **Why not advance the FSM automatically when a tool responds?**
 

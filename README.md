@@ -73,7 +73,7 @@ Global intents (fire from any state): `intent_change_line`, `intent_change_trade
 Every user turn follows this loop inside a single `runner.run_async` call:
 
 ```
-LLM calls domain tool  →  LLM calls fsm_advance(data)
+LLM calls MCP tool  →  LLM calls fsm_advance(data)
        ↑                          ↓
        │              FSM advances, returns next objective
        │                          ↓

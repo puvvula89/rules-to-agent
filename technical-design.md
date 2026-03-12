@@ -29,7 +29,7 @@ The system is composed of three distinct layers that never bleed into each other
 │  • after_tool: handles detect_intent only       │
 │  • after_model: fallback JSON parser            │
 │  • fsm_advance: explicit ADK tool the LLM calls │
-│    after every domain tool; updates ledger and  │
+│    after every MCP tool; updates ledger and     │
 │    fires FSM                                    │
 └──────────────────────┬──────────────────────────┘
                        │ ledger dict
@@ -70,8 +70,8 @@ The LLM always receives:
 CURRENT STATE: <state_name>
 CURRENT OBJECTIVE: <objective text>
 WORKFLOW RULES:
-1. Call the appropriate domain tool(s)...
-2. After each domain tool call, call fsm_advance(data=<example>)
+1. Call the appropriate MCP tool(s)...
+2. After each MCP tool call, call fsm_advance(data=<example>)
 3. fsm_advance returns next_objective and data_still_needed...
 CHANGE OF MIND — call detect_intent(intent) with one of:
   - intent_change_line: User wants to change the phone line they are upgrading
@@ -100,7 +100,7 @@ If the response contains function calls, this callback skips entirely. Otherwise
 
 ### 3.3 The `fsm_advance` Tool (Primary FSM Advancement)
 
-An internal ADK `FunctionTool` the LLM is instructed to call after every domain tool call. This is the primary mechanism by which the FSM advances.
+An internal ADK `FunctionTool` the LLM is instructed to call after every MCP tool call. This is the primary mechanism by which the FSM advances.
 
 ```
 LLM: call verify_auth(account_number="1234", pin="5678")
