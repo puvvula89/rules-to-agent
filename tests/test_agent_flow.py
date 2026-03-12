@@ -207,7 +207,7 @@ class TestMCPServer:
 # Callback pipeline simulation (no LLM)
 # ---------------------------------------------------------------------------
 
-from agents.manager import before_model, after_tool, after_model, fsm_advance, fsm
+from agents.agent import before_model, after_tool, after_model, fsm_advance, fsm
 
 ALL_TOOL_NAMES = [
     "verify_auth", "check_standing", "set_line", "check_eligibility",

@@ -1,6 +1,6 @@
 import os
 import pytest
-from orchestrator.fsm import WorkflowFSM
+from agents.orchestrator.fsm import WorkflowFSM
 
 YAML_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config", "phone_upgrade.yaml"))
 

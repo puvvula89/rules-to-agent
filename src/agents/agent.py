@@ -10,7 +10,7 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
-from orchestrator.fsm import WorkflowFSM
+from .orchestrator.fsm import WorkflowFSM
 
 logger = logging.getLogger(__name__)
 

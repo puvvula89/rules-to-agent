@@ -4,6 +4,6 @@
 #   reasoning_engines.create(adk_app, requirements=[...])
 
 from vertexai.preview.reasoning_engines import AdkApp
-from agents.manager import root_agent
+from agents.agent import root_agent
 
 adk_app = AdkApp(agent=root_agent)

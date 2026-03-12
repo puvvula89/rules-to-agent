@@ -150,7 +150,7 @@ class AgentSession:
 
 async def run_happy_path_with_trade_in():
     """Full happy path: account 1234, trade in iPhone 13 Good, buy iPhone 16."""
-    from agents.manager import root_agent
+    from agents.agent import root_agent
 
     session = AgentSession(root_agent)
     await session.start()
@@ -205,7 +205,7 @@ async def run_happy_path_with_trade_in():
 
 async def run_no_trade_in_path():
     """No trade-in path: skip straight to device selection."""
-    from agents.manager import root_agent
+    from agents.agent import root_agent
 
     session = AgentSession(root_agent)
     await session.start()
@@ -230,7 +230,7 @@ async def run_no_trade_in_path():
 
 async def run_unauthorized_path():
     """Account 9999 should end at EndUnauthorized."""
-    from agents.manager import root_agent
+    from agents.agent import root_agent
 
     session = AgentSession(root_agent)
     await session.start()
@@ -245,7 +245,7 @@ async def run_unauthorized_path():
 
 async def run_change_of_mind():
     """User changes device after reaching FinalPricing."""
-    from agents.manager import root_agent
+    from agents.agent import root_agent
 
     session = AgentSession(root_agent)
     await session.start()
