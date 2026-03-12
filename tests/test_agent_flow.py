@@ -2,12 +2,12 @@
 Integration tests for the full agent flow.
 
 Two layers:
-  1. MCP server HTTP smoke tests — verifies all 12 tools respond correctly
-  2. Callback pipeline simulation — exercises before_model + after_model + after_tool + FSM
+  1. MCP server HTTP smoke tests — verifies all 11 MCP tools respond correctly
+  2. Callback pipeline simulation — exercises before_model + after_model + FSM
      with mock ADK objects (no real LLM call needed)
 
-Architecture change (dynamic FSM-LLM):
-  - after_tool: only handles detect_intent (no ledger updates for other tools)
+Architecture:
+  - detect_intent: ADK FunctionTool in agent.py — handles FSM rewind directly
   - after_model: parses ```json...``` block from LLM text, merges into ledger, advances FSM
 """
 
@@ -198,22 +198,17 @@ class TestMCPServer:
         assert result["order_id"] == "ORD-999888777"
         assert result["error"] is False
 
-    def test_detect_intent(self):
-        result = mcp_call("detect_intent", {"intent": "intent_change_new_device"})
-        assert result == {"detected_intent": "intent_change_new_device"}
-
-
 # ---------------------------------------------------------------------------
 # Callback pipeline simulation (no LLM)
 # ---------------------------------------------------------------------------
 
-from agents.agent import before_model, after_tool, after_model, fsm_advance, fsm
+from agents.agent import before_model, after_model, fsm_advance, detect_intent, fsm
 
 ALL_TOOL_NAMES = [
     "verify_auth", "check_standing", "set_line", "check_eligibility",
     "set_trade_in_preference", "record_condition", "pricing",
-    "select_device", "confirm_order", "decline_order", "submit_order", "detect_intent",
-    "fsm_advance",
+    "select_device", "confirm_order", "decline_order", "submit_order",
+    "fsm_advance", "detect_intent",
 ]
 
 
@@ -229,11 +224,10 @@ def visible_tools(req: MockLlmRequest) -> list[str]:
     return [f.name for f in req.config.tools[0].function_declarations]
 
 
-def run_after_tool(tool_name: str, result: dict, state: str, ledger: dict = None) -> MockCallbackContext:
-    """Run after_tool callback and return the updated context."""
-    ledger = ledger or _empty_ledger()
-    ctx = MockCallbackContext({"fsm_state": state, "ledger": ledger})
-    after_tool(MockBaseTool(tool_name), {}, ctx, result)
+def run_detect_intent(intent: str, state: str, ledger: dict = None) -> MockCallbackContext:
+    """Run detect_intent ADK tool and return the updated context."""
+    ctx = MockCallbackContext({"fsm_state": state, "ledger": ledger or _empty_ledger()})
+    detect_intent(intent, ctx)
     return ctx
 
 
@@ -272,23 +266,6 @@ class TestBeforeModelInstruction:
         # New prompt tells LLM to call fsm_advance after each domain tool
         req = run_before_model("AccountStandingCheck")
         assert "fsm_advance" in req.config.system_instruction
-
-
-class TestAfterToolDoesNotAdvanceFSM:
-    """In the new architecture, after_tool only handles detect_intent."""
-
-    def test_verify_auth_after_tool_does_not_advance(self):
-        ctx = run_after_tool("verify_auth", {"is_authorized": True}, "Auth")
-        # FSM stays in Auth — advancement happens in after_model
-        assert ctx.state["fsm_state"] == "Auth"
-
-    def test_check_standing_after_tool_does_not_advance(self):
-        ctx = run_after_tool("check_standing", {"standing": "GOOD"}, "AccountStandingCheck")
-        assert ctx.state["fsm_state"] == "AccountStandingCheck"
-
-    def test_set_line_after_tool_does_not_advance(self):
-        ctx = run_after_tool("set_line", {"selected_number": "555-0000"}, "LineToUpgrade")
-        assert ctx.state["fsm_state"] == "LineToUpgrade"
 
 
 class TestAfterModelLedgerAndFSM:
@@ -389,7 +366,9 @@ class TestAfterModelLedgerAndFSM:
         assert ctx.state["ledger"]["line_context"]["selected_number"] == "555-0000"
 
 
-class TestDetectIntentCallback:
+class TestDetectIntentTool:
+    """detect_intent is now an ADK FunctionTool — fires FSM rewind directly."""
+
     def test_change_new_device_rewinds_and_wipes(self):
         ledger = {
             "account_context": {"is_authorized": True},
@@ -398,7 +377,7 @@ class TestDetectIntentCallback:
             "new_device_context": {"selection": "Moto G", "price": 800},
             "order_context": {"user_confirmed": True},
         }
-        ctx = run_after_tool("detect_intent", {"detected_intent": "intent_change_new_device"}, "FinalPricing", ledger)
+        ctx = run_detect_intent("intent_change_new_device", "FinalPricing", ledger)
         assert ctx.state["fsm_state"] == "NewUpgradeDeviceSelection"
         assert ctx.state["ledger"]["new_device_context"] == {}
         assert ctx.state["ledger"]["order_context"] == {}
@@ -412,7 +391,7 @@ class TestDetectIntentCallback:
             "new_device_context": {"selection": "Moto G"},
             "order_context": {},
         }
-        ctx = run_after_tool("detect_intent", {"detected_intent": "intent_change_line"}, "FinalPricing", ledger)
+        ctx = run_detect_intent("intent_change_line", "FinalPricing", ledger)
         assert ctx.state["fsm_state"] == "LineToUpgrade"
         assert ctx.state["ledger"]["line_context"] == {}
         assert ctx.state["ledger"]["trade_in_context"] == {}

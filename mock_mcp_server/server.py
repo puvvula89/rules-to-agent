@@ -88,12 +88,6 @@ def submit_order(account_number: str, phone_number: str, new_device: str, trade_
     return {"order_id": "ORD-999888777", "error": False}
 
 
-@mcp.tool()
-def detect_intent(intent: str) -> dict:
-    """Signal a user change-of-mind. Pass the exact trigger name as returned by the workflow configuration."""
-    return {"detected_intent": intent}
-
-
 app = mcp.streamable_http_app()
 
 if __name__ == "__main__":

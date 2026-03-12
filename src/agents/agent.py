@@ -7,7 +7,6 @@ from google.adk import Agent
 from google.adk.tools.mcp_tool import McpToolset, StreamableHTTPConnectionParams
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models.llm_request import LlmRequest
-from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
 
 from .orchestrator.fsm import WorkflowFSM
@@ -46,25 +45,6 @@ _FSM_ADVANCE_EXAMPLES = _build_fsm_advance_examples()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _parse_mcp_response(tool_response) -> dict:
-    """Unwrap MCP envelope and return parsed dict."""
-    try:
-        if isinstance(tool_response, dict):
-            content_list = tool_response.get("content")
-            if isinstance(content_list, list) and content_list:
-                first = content_list[0]
-                if isinstance(first, dict) and "text" in first:
-                    return json.loads(first["text"])
-            return tool_response
-        elif isinstance(tool_response, list):
-            return json.loads(tool_response[0].text)
-        elif isinstance(tool_response, str):
-            return json.loads(tool_response)
-    except Exception as e:
-        logger.warning(f"[Hook Warning] Could not parse tool response: {e}")
-    return {}
-
 
 def _extract_json_block(text: str) -> dict:
     """Parse the first ```json ... ``` block from LLM response text."""
@@ -109,25 +89,25 @@ def _normalize_booleans(obj):
 # ---------------------------------------------------------------------------
 
 def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
-    """Advance the workflow after collecting data from a domain tool OR from the conversation.
+    """Advance the workflow state with data collected from a domain tool.
 
-    Call this after EVERY domain tool call, passing the structured data you collected.
-    You may also call this directly with data you extracted from the user's messages
-    (without calling a domain tool first) when the user has already provided the needed values.
+    WHEN TO CALL:
+      After every MCP tool call, immediately and without exception.
+      Pattern: MCP tool → `fsm_advance` → MCP tool → `fsm_advance`
+      Never produce a text response when the last MCP tool called was not followed by `fsm_advance`.
 
     Args:
-        data: Structured data collected from a tool response or the user's message,
-              nested by context group.
+        data: Structured data from the tool response, nested by context group.
 {_FSM_ADVANCE_EXAMPLES}
 
     Returns:
         workflow_advanced_to: the new FSM state name
         next_objective: what you must accomplish next
-        fields_to_collect: fields required for the next step — IMPORTANT: scan the
-            ENTIRE conversation history for these values before asking the user.
-            If found in history, call the relevant domain tool or fsm_advance immediately
-            without asking. Only ask the user if the value is genuinely absent from
-            the conversation.
+        fields_to_collect: fields required for the next step — scan conversation
+            history first; if the value is already known, call the appropriate
+            domain tool with it immediately rather than asking the user again.
+        next_action: CONTINUE means call the next tool now; ASK_USER means the
+            workflow needs new input from the user.
     """
     ledger = tool_context.state.get("ledger", {})
     normalized = _normalize_booleans(data)
@@ -155,6 +135,35 @@ fsm_advance.__doc__ = fsm_advance.__doc__.replace('{_FSM_ADVANCE_EXAMPLES}', _FS
 
 
 # ---------------------------------------------------------------------------
+# detect_intent — ADK tool for change-of-mind global transitions
+# ---------------------------------------------------------------------------
+
+def detect_intent(intent: str, tool_context: ToolContext) -> dict:
+    """Signal that the user wants to change a previous choice in the workflow.
+
+    WHEN TO CALL: When the user expresses a change of mind about a previous selection.
+    Do NOT call `fsm_advance` after this — it handles FSM advancement internally.
+
+    Args:
+        intent: Exact trigger name from the CHANGE OF MIND list in your instructions.
+
+    Returns:
+        workflow_rewound_to: the state the workflow has rewound to
+        next_objective: what you must accomplish next
+    """
+    ledger = tool_context.state.get("ledger", {})
+    current_state = tool_context.state.get("fsm_state", fsm.initial_state)
+    new_state = fsm.fire_intent(current_state, intent, ledger)
+    tool_context.state["fsm_state"] = new_state
+    tool_context.state["ledger"] = ledger
+    logger.info(f"[FSM] Intent '{intent}': {current_state} → {new_state}")
+    return {
+        "workflow_rewound_to": new_state,
+        "next_objective": fsm.get_objective(new_state),
+    }
+
+
+# ---------------------------------------------------------------------------
 # System prompt — static sections (built once at startup)
 # ---------------------------------------------------------------------------
 
@@ -171,25 +180,24 @@ _BRAND = (
 
 _TOOL_CONTRACT = (
     'TOOL CONTRACT\n'
-    '- Every tool call that is not fsm_advance and not detect_intent must be immediately\n'
-    '  followed by fsm_advance. No exceptions. Ending a turn with any other tool as the\n'
-    '  last call (without fsm_advance after it) is an error.\n'
-    '- You may call fsm_advance directly — without a prior tool — when the user has\n'
-    '  already provided the needed value in conversation. Just pass the extracted data.\n\n'
+    '- After every MCP tool call, immediately call `fsm_advance`. No exceptions.\n'
+    '  Pattern: MCP tool → `fsm_advance` → MCP tool → `fsm_advance`\n'
+    '- Ending a turn with an MCP tool as the last call is an error.\n'
+    '- `detect_intent` handles FSM advancement internally — do NOT call `fsm_advance` after it.\n\n'
 )
 
 _HISTORY_CONTRACT = (
     'HISTORY CONTRACT\n'
     '- Before asking the user for anything, scan the full conversation history.\n'
-    '- If the value is already there, use it immediately. Never ask for information\n'
-    '  the user has already provided at any point in the conversation.\n\n'
+    '- If the value is already there, call the appropriate domain tool with it immediately.\n'
+    '  Never ask for information the user has already provided.\n\n'
 )
 
 _CONTINUATION_CONTRACT = (
     'CONTINUATION CONTRACT\n'
-    '- After fsm_advance returns next_action=CONTINUE: call the next tool immediately.\n'
+    '- After `fsm_advance` returns next_action=CONTINUE: call the next tool immediately.\n'
     '  Do not produce any text. Do not narrate. Do not pause.\n'
-    '- After fsm_advance returns next_action=ASK_USER: produce one response —\n'
+    '- After `fsm_advance` returns next_action=ASK_USER: produce one response —\n'
     '  single, cohesive, warm — summarising all outcomes of this turn, then stop.\n'
     '- Never produce text mid-turn ("let me check", "I\'ll get the pricing now", etc.).\n'
     '  If you can call a tool, call it. Narrating instead of acting is an error.\n\n'
@@ -197,7 +205,8 @@ _CONTINUATION_CONTRACT = (
 
 _CHANGE_OF_MIND = (
     'CHANGE OF MIND\n'
-    'If the user changes a previous choice, call detect_intent passing the exact trigger name:\n'
+    'If the user changes a previous choice, call `detect_intent` with the exact trigger name.\n'
+    '`detect_intent` handles FSM advancement internally — do NOT call `fsm_advance` after it.\n'
     f'{_GLOBAL_INTENTS_TEXT}\n'
 )
 
@@ -228,36 +237,14 @@ def before_model(
         'WHERE YOU ARE\n'
         f'State:     {current_state}\n'
         f'Objective: {fsm.get_objective(current_state)}\n'
-        f'fsm_advance example: fsm_advance(data={json.dumps(example_data)})\n'
+        f'`fsm_advance` example: `fsm_advance(data={json.dumps(example_data)})`\n'
+        'Reminder: call `fsm_advance` immediately after every tool call.\n'
     )
 
     if llm_request.config:
         llm_request.config.system_instruction = _STATIC_INSTRUCTION + where_you_are
 
     return None
-
-
-def after_tool(
-    tool: BaseTool,
-    args: dict,
-    tool_context: ToolContext,
-    tool_response: dict,
-):
-    """Handles detect_intent for change-of-mind flows. fsm_advance is handled by the tool itself."""
-    if tool.name != "detect_intent":
-        return tool_response
-
-    result_data = _parse_mcp_response(tool_response)
-    intent = result_data.get("detected_intent", "")
-    if intent:
-        ledger = tool_context.state.get("ledger", {})
-        current_state = tool_context.state.get("fsm_state", fsm.initial_state)
-        new_state = fsm.fire_intent(current_state, intent, ledger)
-        tool_context.state["fsm_state"] = new_state
-        tool_context.state["ledger"] = ledger
-        logger.info(f"[FSM] Intent '{intent}': {current_state} → {new_state}")
-
-    return tool_response
 
 
 def after_model(
@@ -316,8 +303,7 @@ root_agent = Agent(
     name="TelcoManager",
     model="gemini-2.5-pro",
     instruction="You are Alex, a friendly Verizon customer service representative.",
-    tools=[mcp_toolset, fsm_advance],
+    tools=[mcp_toolset, fsm_advance, detect_intent],
     before_model_callback=before_model,
-    after_tool_callback=after_tool,
     after_model_callback=after_model,
 )
