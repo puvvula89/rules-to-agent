@@ -458,6 +458,6 @@ Logs are written to `logs/flow-test.log` (overwritten each run).
 
 - **Project:** `tmeg-working-demos`
 - **Location:** `us-central1`
-- **Model:** `gemini-2.5-pro`
+- **Model:** `gemini-3.0-flash-preview`
 
 The `deploy/app.py` wraps `root_agent` in an `AdkApp` for Agent Engine. All session state management, scaling, and authentication are handled by Agent Engine — no changes to agent code required.
