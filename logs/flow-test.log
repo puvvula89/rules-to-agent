@@ -4,40 +4,60 @@ TEST: test_happy_path_with_trade_in
 ============================================================
 
 ============================================================
-Session started: a6d158f3-936a-4f5e-9ba6-c9cc1c43f72c
+Session started: 9785a535-3869-4537-aee0-97d43ff2a8df
 ============================================================
 
 [USER] Hi, I'd like to upgrade my phone. My account number is 1234 and my PIN is 5678.
+[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
+[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
   [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
   [FSM]   LineToUpgrade
-[AGENT] Welcome to Verizon! I'm Alex. Your account is verified and in great standing. Which phone line would you like to upgrade today?
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I've successfully verified your account—thank you for that! To get started with your upgrade, could you please tell me which phone number you'd like to upgrade today?
 
 [USER] I want to upgrade the line 555-123-4567.
-  [TOOLS] check_eligibility → fsm_advance → fsm_advance
+[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-123-4567'}}
+[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
+  [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
   [FSM]   VerifyTradeIn
-[AGENT] That's great news! The line 555-123-4567 is eligible for an upgrade. Would you like to trade in your current device?
+[AGENT] Great news! Your line ending in 4567 is eligible for an upgrade. Are you interested in trading in your current device as part of this upgrade? It's a fantastic way to save on your new phone!
 
 [USER] Yes, I want to trade in my current device.
-  [TOOLS] fsm_advance
+[FSM] VerifyTradeIn → DeviceTradeInChecks | data: {'trade_in_context': {'wants_trade_in': True}}
+  [TOOLS] set_trade_in_preference → fsm_advance
   [FSM]   DeviceTradeInChecks
-[AGENT] Excellent! We can definitely help you with a trade-in. What is the make and model of the device you'd like to trade in, and what condition is it in? Please choose from Excellent, Good, or Poor.
+[AGENT] That's great! To give you an accurate trade-in value, could you please tell me the model of the device you're trading in and what its physical condition is (Excellent, Good, or Poor)?
 
 [USER] I'm trading in an iPhone 13 in Good condition.
+[FSM] DeviceTradeInChecks → TradeInPricing | data: {'trade_in_context': {'final_condition': 'Good'}}
+[FSM] TradeInPricing → NewUpgradeDeviceSelection | data: {'trade_in_context': {'quote_value': 200}}
   [TOOLS] record_condition → fsm_advance → pricing → fsm_advance
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] Thanks for that information! Your trade-in value for the iPhone 13 in Good condition is $200. Now, let's find you a new phone. Which device would you like to upgrade to?
+[AGENT] I have some great news! For your iPhone 13 in Good condition, we can offer you a trade-in value of $200. That’s a wonderful start toward your new device!
+
+Which new phone were you interested in upgrading to today?
 
 [USER] I'd like to get the iPhone 16.
+[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'iPhone 16'}}
+[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
   [TOOLS] select_device → fsm_advance → pricing → fsm_advance
   [FSM]   FinalPricing
-[AGENT] Okay, you've selected the iPhone 16, which is $1000. After your $200 trade-in credit for the iPhone 13, your new total will be $800.
+[AGENT] Excellent choice! The iPhone 16 is a fantastic device.
 
-Does that sound good to you? We can submit the order right now.
+Let's look at the summary of your upgrade for the line 555-123-4567:
+- **New Device:** iPhone 16 ($1,000)
+- **Trade-In Credit:** -$200 (for your iPhone 13 in Good condition)
+- **Total Estimated Price:** $800
+
+Would you like to go ahead and confirm this order?
 
 [USER] Yes, I confirm the order. Please proceed.
-  [TOOLS] fsm_advance → submit_order → fsm_advance
+[FSM] FinalPricing → ProcessOrder | data: {'order_context': {'user_confirmed': True}}
+[FSM] ProcessOrder → EndSuccess | data: {'order_context': {'error': False, 'order_id': 'ORD-999888777'}}
+  [TOOLS] confirm_order → fsm_advance → submit_order → fsm_advance
   [FSM]   EndSuccess
-[AGENT] Excellent! Your order has been placed successfully. Your order number is ORD-999888777. You'll receive an email confirmation shortly with all the details. Thank you for choosing Verizon
+[AGENT] Wonderful news! Your upgrade is all set. Your order for the iPhone 16 has been successfully submitted, and your order number is ORD-999888777.
+
+We’re so glad we could help you with this today. Thank you for choosing Verizon, and enjoy your new phone! Is there anything else I can assist you with?
 
 ============================================================
 FINAL FSM STATE: EndSuccess
@@ -51,33 +71,54 @@ TEST: test_no_trade_in_path
 ============================================================
 
 ============================================================
-Session started: 03622553-62ac-4f8c-a276-2c9eff677dad
+Session started: 58a10e1e-8de0-4387-aa12-7f6b6377ff7b
 ============================================================
 
 [USER] Account 1234, PIN 0000.
+[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
+[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
   [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
   [FSM]   LineToUpgrade
-[AGENT] Welcome to Verizon! I'm Alex. Your account is verified and in great standing. Which phone line would you like to upgrade today?
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I've successfully verified your account, and I'm happy to see that everything is in good standing. 
+
+To get started with your upgrade, could you please tell me which phone number you'd like to upgrade today?
 
 [USER] Upgrade line 555-999-0000.
-  [TOOLS] set_line → check_eligibility → fsm_advance → fsm_advance
+[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-999-0000'}}
+[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
+  [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
   [FSM]   VerifyTradeIn
-[AGENT] Excellent! The line 555-999-0000 is eligible for an upgrade. Would you like to trade in your current device?
+[AGENT] Great news! The line ending in 0000 is eligible for an upgrade. 
+
+Would you like to trade in your current device to save on a new one?
 
 [USER] No, I don't want to trade in my old device.
+[FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'trade_in_context': {'wants_trade_in': False}}
   [TOOLS] set_trade_in_preference → fsm_advance
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] No problem! What new device were you interested in?
+[AGENT] I understand. We'll skip the trade-in for now. 
+
+What new device were you looking to upgrade to? I can help you with the pricing and availability for any model you're interested in!
 
 [USER] I want the Pixel 9.
-  [TOOLS] select_device → pricing → fsm_advance → fsm_advance
+[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9'}}
+[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
+  [TOOLS] select_device → fsm_advance → pricing → fsm_advance
   [FSM]   FinalPricing
-[AGENT] You've selected the Pixel 9 for $1000. Since you are not trading in a device, your final price is $1000. Would you like to proceed with this order?
+[AGENT] The Pixel 9 is a fantastic choice! 
+
+For the line ending in 0000, the price for your new Pixel 9 will be $1000. Since you're not trading in a device, that will be your total.
+
+Would you like to go ahead and confirm this order?
 
 [USER] Yes, confirm the order.
+[FSM] FinalPricing → ProcessOrder | data: {'order_context': {'user_confirmed': True}}
+[FSM] ProcessOrder → EndSuccess | data: {'order_context': {'error': False, 'order_id': 'ORD-999888777'}}
   [TOOLS] confirm_order → fsm_advance → submit_order → fsm_advance
   [FSM]   EndSuccess
-[AGENT] Excellent! Your order has been placed successfully. Your order number is ORD-999888777. Thank you for choosing Verizon
+[AGENT] Excellent news! I've successfully processed your upgrade. Your order number for the new Pixel 9 is ORD-999888777. 
+
+You'll receive a confirmation email shortly with all the details. Thank you so much for choosing Verizon, and I hope you enjoy your new phone! Is there anything else I can assist you with today?
 
 FINAL STATE: EndSuccess
 ✓ No trade-in path PASSED
@@ -87,13 +128,14 @@ TEST: test_unauthorized_path
 ============================================================
 
 ============================================================
-Session started: 7826c9d4-62a9-4f1b-9229-468bc725b44d
+Session started: 5da762b8-8c5f-46e1-afce-b5b5434de2fa
 ============================================================
 
 [USER] My account number is 9999 and PIN is 1234.
+[FSM] Auth → EndUnauthorized | data: {'account_context': {'is_authorized': False}}
   [TOOLS] verify_auth → fsm_advance
   [FSM]   EndUnauthorized
-[AGENT] I'm so sorry, but it looks like the account number or PIN you provided is incorrect. Unfortunately, I can't proceed without successful verification. Please double-check your information and feel free to start a new chat with me when you're ready. Thank you for your understanding.
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I'm sorry, but I wasn't able to verify your account with the information provided. For security reasons, I can't proceed with the upgrade process at this time. Please double-check your account details and feel free to reach back out whenever you're ready! Thank you for choosing Verizon.
 
 FINAL STATE: EndUnauthorized
 ✓ Unauthorized path reached: EndUnauthorized
@@ -103,33 +145,59 @@ TEST: test_change_of_mind
 ============================================================
 
 ============================================================
-Session started: 9adb74eb-3736-4714-bd70-2c83765a4938
+Session started: 7e8755b0-9d25-4f23-899d-1573ad804d45
 ============================================================
 
 [USER] Account 1234, PIN 5678.
+[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
+[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
   [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
   [FSM]   LineToUpgrade
-[AGENT] Welcome to Verizon! I'm Alex. Your account is verified and in great standing. Which phone line would you like to upgrade today?
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I've successfully verified your account, and your standing is excellent.
+
+To get started with your upgrade, which phone number would you like to use?
 
 [USER] Line 555-111-2222.
+[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-111-2222'}}
+[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
   [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
   [FSM]   VerifyTradeIn
-[AGENT] Great news! The line 555-111-2222 is eligible for an upgrade. Would you like to trade in your current device?
+[AGENT] Great news! Your line 555-111-2222 is eligible for an upgrade. 
+
+Would you like to trade in your current device as part of this upgrade? It's a great way to save on a new phone!
 
 [USER] No trade-in.
+[FSM] VerifyTradeIn → NewUpgradeDeviceSelection | data: {'trade_in_context': {'wants_trade_in': False}}
   [TOOLS] set_trade_in_preference → fsm_advance
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] No problem at all. We can skip the trade-in. What new device would you like to get with your upgrade?
+[AGENT] I've noted that you won't be trading in a device. 
+
+What new phone are you looking to upgrade to? We have some amazing new models available!
 
 [USER] I want the Pixel 9.
-  [TOOLS] select_device → fsm_advance → pricing → fsm_advance
+[FSM] NewUpgradeDeviceSelection → NewUpgradeDevicePricing | data: {'new_device_context': {'selection': 'Pixel 9'}}
+[FSM] NewUpgradeDevicePricing → FinalPricing | data: {'new_device_context': {'price': 1000}}
+[FSM] FinalPricing → FinalPricing | data: {'trade_in_context': {'quote_value': 0}}
+[FSM] FinalPricing → FinalPricing | data: {'trade_in_context': {'quote_value': 0, 'wants_trade_in': False}, 'new_device_context': {'price': 1000, 'selection': 'Pixel 9'}}
+  [TOOLS] select_device → fsm_advance → pricing → fsm_advance → fsm_advance → fsm_advance
   [FSM]   FinalPricing
-[AGENT] Excellent choice! The Pixel 9 is a fantastic phone. The total for your new device is $1,000. Would you like to proceed with the order?
+[AGENT] Excellent choice! The Pixel 9 is a fantastic device. 
+
+Since you've decided not to trade in a device, here is the summary of your upgrade for line 555-111-2222:
+- **New Device:** Pixel 9
+- **Price:** $1,000.00
+- **Trade-In Credit:** $0.00
+- **Total:** $1,000.00 (plus applicable taxes and fees)
+
+Would you like to proceed with this order?
 
 [USER] Actually wait, I changed my mind. I want a different device.
-  [TOOLS] detect_intent → fsm_advance
+[FSM] Intent 'intent_change_new_device': FinalPricing → NewUpgradeDeviceSelection
+  [TOOLS] detect_intent
   [FSM]   NewUpgradeDeviceSelection
-[AGENT] Of course, we can change that for you. What new device would you like to look at instead?
+[AGENT] No problem at all! It's important to get the phone that's perfect for you. 
+
+Which other device were you considering?
 
 After change of mind: NewUpgradeDeviceSelection
 ✓ Change of mind handled: NewUpgradeDeviceSelection
@@ -139,20 +207,28 @@ TEST: test_line_provided_in_first_message
 ============================================================
 
 ============================================================
-Session started: dd21c385-d61a-42e8-839d-f5b6d0e7b8d8
+Session started: c65074a3-70c8-40df-9354-2dea2156852d
 ============================================================
 
 [USER] Hi, I want to upgrade line 555-111-2222. My account number is 1234 and PIN is 5678.
-  [TOOLS] verify_auth → check_eligibility → set_line → fsm_advance → fsm_advance → fsm_advance → check_standing → fsm_advance → fsm_advance → fsm_advance
+[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
+[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
+[FSM] LineToUpgrade → CheckLineUpgradeEligibility | data: {'line_context': {'selected_number': '555-111-2222'}}
+[FSM] CheckLineUpgradeEligibility → VerifyTradeIn | data: {'line_context': {'is_eligible': True}}
+  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance → set_line → fsm_advance → check_eligibility → fsm_advance
   [FSM]   VerifyTradeIn
-[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I was able to verify your account and confirm that the line ending in 2222 is eligible for an upgrade.
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help.
 
-Would you like to trade in your current device on that line?
+I've checked your account and I have some great news—your line ending in 2222 is in good standing and fully eligible for an upgrade! 
+
+To get things started, would you like to trade in your current device for credit towards a new one?
   [CHECK] FSM after turn 1: VerifyTradeIn
-  [CHECK] Ledger: {'account_context': {'is_authorized': True, 'standing': 'GOOD'}, 'line_context': {'is_eligible': True, 'selected_number': '555-111-2222'}}
-  [CHECK] Agent response: Welcome to Verizon! I'm Alex, and I'm here to help. I was able to verify your account and confirm that the line ending in 2222 is eligible for an upgrade.
+  [CHECK] Ledger: {'account_context': {'is_authorized': True, 'standing': 'GOOD'}, 'line_context': {'selected_number': '555-111-2222', 'is_eligible': True}}
+  [CHECK] Agent response: Welcome to Verizon! I'm Alex, and I'm here to help.
 
-Would you like to trade in your current devi
+I've checked your account and I have some great news—your line ending in 2222 is in good standing and fully eligible for an upgrade! 
+
+To get thing
 
 ✓ Line-provided-upfront scenario PASSED
 
@@ -161,41 +237,452 @@ TEST: test_front_loaded_device_and_tradein_intent
 ============================================================
 
 ============================================================
-Session started: 461cea79-21f2-4603-9d2f-bbbc33ebfe77
+Session started: b2ae97ee-0701-4d1b-bdac-c27ee38c542f
 ============================================================
 
 [USER] Hi! I want to upgrade to an iPhone 16. I also want to trade in my current iPhone 13.
   [FSM]   Auth
-[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help. I can certainly assist you with upgrading to an iPhone 16 and trading in your iPhone 13. First, I need to verify your account. What is your account number and PIN?
+[AGENT] Welcome to Verizon! I'm Alex, and I'm here to help you get that new iPhone 16. That's a great choice! To get started with your upgrade and trade-in, I'll just need to verify your account. Could you please provide your account number and PIN?
   [T1] FSM: Auth | Response asks for account/PIN: OK
 
 [USER] Account 1234, PIN 5678.
-  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
-  [FSM]   LineToUpgrade
-[AGENT] Great news! Your account is verified and in good standing. Which phone number would you like to upgrade?
+[FSM] Auth → AccountStandingCheck | data: {'account_context': {'is_authorized': True}}
+[FSM] AccountStandingCheck → LineToUpgrade | data: {'account_context': {'standing': 'GOOD'}}
+[ERROR] Exception during runner.run_async on turn: 'Account 1234, PIN 5678.'
+Traceback (most recent call last):
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_transports/default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_transports/default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        pool_request.request
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpcore/_async/connection.py", line 101, in handle_async_request
+    raise exc
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpcore/_async/connection.py", line 78, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpcore/_async/connection.py", line 156, in _connect
+    stream = await stream.start_tls(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpcore/_backends/anyio.py", line 67, in start_tls
+    with map_exceptions(exc_map):
+         ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ConnectError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py", line 105, in send
+    async for event in self.runner.run_async(
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+                    final_text = part.text  # keep only the last text (summarized response)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 565, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 550, in _run_with_trace
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 782, in _exec_with_plugin
+    async for event in agen:
+    ...<64 lines>...
+        yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 539, in execute
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py", line 295, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py", line 470, in _run_async_impl
+    async for event in agen:
+    ...<5 lines>...
+        should_pause = True
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 752, in run_async
+    async for event in agen:
+      last_event = event
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 829, in _run_one_step_async
+    async for llm_response in agen:
+    ...<13 lines>...
+          yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1186, in _call_llm_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1169, in _call_llm_with_tracing
+    async for llm_response in agen:
+    ...<13 lines>...
+      yield llm_response
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1245, in _run_and_handle_error
+    async for response in agen:
+      yield response
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 389, in _run_and_handle_error
+    raise model_error
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 374, in _run_and_handle_error
+    async for llm_response in agen:
+      tracing.trace_generate_content_result(span, llm_response)
+      yield llm_response
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 245, in generate_content_async
+    response = await self.api_client.aio.models.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/models.py", line 7563, in generate_content
+    return await self._generate_content(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        model=model, contents=contents, config=parsed_config
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/models.py", line 6330, in _generate_content
+    response = await self._api_client.async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        'post', path, request_dict, http_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 1447, in async_request
+    result = await self._async_request(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        http_request=http_request, http_options=http_options, stream=False
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 1380, in _async_request
+    return await self._async_retry(  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self._async_request_once, http_request, stream
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/asyncio/__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/asyncio/__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/__init__.py", line 413, in exc_check
+    raise retry_exc.reraise()
+          ~~~~~~~~~~~~~~~~~^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/__init__.py", line 184, in reraise
+    raise self.last_attempt.result()
+          ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/_base.py", line 395, in __get_result
+    raise self._exception
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/asyncio/__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 1353, in _async_request_once
+    client_response = await self._async_httpx_client.request(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_transports/default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+         ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/httpx/_transports/default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError
+
 
 ============================================================
 TEST: test_auto_progression_no_nudge
 ============================================================
 
 ============================================================
-Session started: d6553964-ee1a-4bb9-846d-6dc5d6163674
+Session started: 93fcd4b2-a56b-4810-a95b-3f940bbc25ae
 ============================================================
 
 [USER] Account 1234, PIN 5678.
-  [TOOLS] verify_auth → fsm_advance → check_standing → fsm_advance
-  [FSM]   LineToUpgrade
-[AGENT] Welcome to Verizon! I'm Alex. Your account is verified and in good standing. Which phone line would you like to upgrade today?
+[ERROR] Exception during runner.run_async on turn: 'Account 1234, PIN 5678.'
+Traceback (most recent call last):
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+    ~~~~~~~~~~~~^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connection.py", line 796, in connect
+    sock_and_verified = _ssl_wrap_socket_and_match_hostname(
+        sock=sock,
+    ...<14 lines>...
+        assert_fingerprint=self.assert_fingerprint,
+    )
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connection.py", line 975, in _ssl_wrap_socket_and_match_hostname
+    ssl_sock = ssl_wrap_socket(
+        sock=sock,
+    ...<8 lines>...
+        tls_in_tls=tls_in_tls,
+    )
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/util/ssl_.py", line 483, in ssl_wrap_socket
+    ssl_sock = _ssl_wrap_socket_impl(sock, context, tls_in_tls, server_hostname)
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/util/ssl_.py", line 527, in _ssl_wrap_socket_impl
+    return ssl_context.wrap_socket(sock, server_hostname=server_hostname)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/ssl.py", line 455, in wrap_socket
+    return self.sslsocket_class._create(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sock=sock,
+        ^^^^^^^^^^
+    ...<5 lines>...
+        session=session
+        ^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/ssl.py", line 1076, in _create
+    self.do_handshake()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/ssl.py", line 1372, in do_handshake
+    self._sslobj.do_handshake()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+TimeoutError: [Errno 60] Operation timed out
 
-[USER] I want to upgrade line 555-555-0001.
-  [TOOLS] set_line → fsm_advance → check_eligibility → fsm_advance
-  [FSM]   VerifyTradeIn
-[AGENT] Excellent! The line 555-555-0001 is eligible for an upgrade. Would you like to trade in your current device?
+The above exception was the direct cause of the following exception:
 
-[USER] Yes, I want to trade in my iPhone 13 — it's in Good condition. I'd like to get the iPhone 16 as my new device.
-  [TOOLS] set_trade_in_preference → fsm_advance → record_condition → fsm_advance → pricing
-  [FSM]   TradeInPricing
-[AGENT] 
-  [CHECK] FSM after all-device-info turn: TradeInPricing
-  [CHECK] Ledger: {'account_context': {'is_authorized': True, 'standing': 'GOOD'}, 'line_context': {'selected_number': '555-555-0001', 'is_eligible': True}, 'trade_in_context': {'wants_trade_in': True, 'final_condition': 'Good'}}
-  [CHECK] Agent response: 
+Traceback (most recent call last):
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/requests/adapters.py", line 644, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/util/retry.py", line 490, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/util/util.py", line 39, in reraise
+    raise value
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connectionpool.py", line 488, in _make_request
+    raise new_e
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connectionpool.py", line 466, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=conn.timeout)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/urllib3/connectionpool.py", line 367, in _raise_timeout
+    raise ReadTimeoutError(
+        self, url, f"Read timed out. (read timeout={timeout_value})"
+    ) from err
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): Read timed out. (read timeout=120)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/auth/transport/requests.py", line 188, in __call__
+    response = self.session.request(
+        method, url, data=body, headers=headers, timeout=timeout, **kwargs
+    )
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/requests/adapters.py", line 690, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): Read timed out. (read timeout=120)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/wilsondayakar/Projects/vibecoding/rules-to-agent/tests/test_e2e_live.py", line 105, in send
+    async for event in self.runner.run_async(
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+                    final_text = part.text  # keep only the last text (summarized response)
+                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 565, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 550, in _run_with_trace
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 782, in _exec_with_plugin
+    async for event in agen:
+    ...<64 lines>...
+        yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/runners.py", line 539, in execute
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/base_agent.py", line 295, in run_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/agents/llm_agent.py", line 470, in _run_async_impl
+    async for event in agen:
+    ...<5 lines>...
+        should_pause = True
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 752, in run_async
+    async for event in agen:
+      last_event = event
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 829, in _run_one_step_async
+    async for llm_response in agen:
+    ...<13 lines>...
+          yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1186, in _call_llm_async
+    async for event in agen:
+      yield event
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1169, in _call_llm_with_tracing
+    async for llm_response in agen:
+    ...<13 lines>...
+      yield llm_response
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 1245, in _run_and_handle_error
+    async for response in agen:
+      yield response
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 389, in _run_and_handle_error
+    raise model_error
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/flows/llm_flows/base_llm_flow.py", line 374, in _run_and_handle_error
+    async for llm_response in agen:
+      tracing.trace_generate_content_result(span, llm_response)
+      yield llm_response
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/adk/models/google_llm.py", line 245, in generate_content_async
+    response = await self.api_client.aio.models.generate_content(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/models.py", line 7563, in generate_content
+    return await self._generate_content(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        model=model, contents=contents, config=parsed_config
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/models.py", line 6330, in _generate_content
+    response = await self._api_client.async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        'post', path, request_dict, http_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 1447, in async_request
+    result = await self._async_request(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        http_request=http_request, http_options=http_options, stream=False
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 1380, in _async_request
+    return await self._async_retry(  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self._async_request_once, http_request, stream
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/asyncio/__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/asyncio/__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/__init__.py", line 413, in exc_check
+    raise retry_exc.reraise()
+          ~~~~~~~~~~~~~~~~~^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/__init__.py", line 184, in reraise
+    raise self.last_attempt.result()
+          ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/_base.py", line 443, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/_base.py", line 395, in __get_result
+    raise self._exception
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/tenacity/asyncio/__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 1247, in _async_request_once
+    f'Bearer {await self._async_access_token()}'
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 1058, in _async_access_token
+    return await async_get_token_from_credentials(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+    )  # type: ignore[no-any-return]
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 1965, in async_get_token_from_credentials
+    await asyncio.to_thread(refresh_auth, credentials)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.2/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/genai/_api_client.py", line 208, in refresh_auth
+    credentials.refresh(Request())  # type: ignore[no-untyped-call]
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/oauth2/credentials.py", line 412, in refresh
+    ) = reauth.refresh_grant(
+        ~~~~~~~~~~~~~~~~~~~~^
+        request,
+        ^^^^^^^^
+    ...<6 lines>...
+        enable_reauth_refresh=self._enable_reauth_refresh,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/oauth2/reauth.py", line 337, in refresh_grant
+    ) = _client._token_endpoint_request_no_throw(
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        request, token_uri, body, headers=metrics_header
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/oauth2/_client.py", line 192, in _token_endpoint_request_no_throw
+    response = request(
+        method="POST", url=token_uri, headers=headers_to_use, body=body, **kwargs
+    )
+  File "/Users/wilsondayakar/Library/Caches/pypoetry/virtualenvs/telco-agentic-rules-engine-jFStjozb-py3.14/lib/python3.14/site-packages/google/auth/transport/requests.py", line 195, in __call__
+    raise new_exc from caught_exc
+google.auth.exceptions.TransportError: HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): Read timed out. (read timeout=120)
+
