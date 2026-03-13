@@ -41,6 +41,7 @@ states:
   - name: FinalPricing
     objective: "Calculate final price (New Device Price - Trade In Quote) and present the summary to the user."
     extract_variables: ["order_context.user_confirmed"]
+    next_action: ASK_USER
 
   - name: ProcessOrder
     objective: "Submit the final transaction using the submit_order tool and confirm success with the user."

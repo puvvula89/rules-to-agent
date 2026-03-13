@@ -121,7 +121,7 @@ def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
     logger.info(f"[FSM] {current_state} → {new_state} | data: {data}")
 
     fields = fsm.get_extract_variables(new_state)
-    next_action = "ASK_USER" if (fsm.is_terminal(new_state) or not fields) else "CONTINUE"
+    next_action = "ASK_USER" if (fsm.is_terminal(new_state) or not fields or fsm.requires_user_input(new_state)) else "CONTINUE"
 
     return {
         "workflow_advanced_to": new_state,

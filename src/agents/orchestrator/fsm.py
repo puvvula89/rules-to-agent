@@ -144,6 +144,15 @@ class WorkflowFSM:
                     result.append(var)
         return result
 
+    def requires_user_input(self, state_name: str) -> bool:
+        """Return True if YAML marks this state next_action: ASK_USER.
+
+        Used for states where the LLM must ask the user before calling any tool
+        (e.g. FinalPricing — present summary, await confirmation).
+        Keeps the override in YAML; no state names hardcoded in Python.
+        """
+        return self._state_meta.get(state_name, {}).get('next_action') == 'ASK_USER'
+
     def is_terminal(self, state_name: str) -> bool:
         """Return True if state has no outgoing non-global transitions (derived from YAML)."""
         for tx in self.config['transitions']:
