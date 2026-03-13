@@ -301,7 +301,7 @@ mcp_toolset = McpToolset(
 
 root_agent = Agent(
     name="TelcoManager",
-    model="gemini-3.0-flash-preview",
+    model="gemini-2.5-flash",
     instruction="You are Alex, a friendly Verizon customer service representative.",
     tools=[mcp_toolset, fsm_advance, detect_intent],
     before_model_callback=before_model,
