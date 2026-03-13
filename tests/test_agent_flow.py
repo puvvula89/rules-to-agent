@@ -177,6 +177,14 @@ class TestMCPServer:
         result = mcp_call("pricing", {"device_model": "Moto G"})
         assert result == {"selection": "Moto G", "price": 800}
 
+    def test_calculate_final_price_with_trade_in(self):
+        result = mcp_call("calculate_final_price", {"new_device_price": 1000, "trade_in_quote": 200})
+        assert result == {"final_price": 800}
+
+    def test_calculate_final_price_no_trade_in(self):
+        result = mcp_call("calculate_final_price", {"new_device_price": 1000, "trade_in_quote": 0})
+        assert result == {"final_price": 1000}
+
     def test_select_device(self):
         result = mcp_call("select_device", {"device_model": "Pixel 9"})
         assert result == {"selection": "Pixel 9"}
@@ -330,6 +338,10 @@ class TestAfterModelLedgerAndFSM:
 
     def test_device_priced_advances(self):
         ctx = run_after_model({"new_device_context": {"price": 1000}}, "NewUpgradeDevicePricing")
+        assert ctx.state["fsm_state"] == "CalculateFinalPrice"
+
+    def test_final_price_calculated_advances(self):
+        ctx = run_after_model({"order_context": {"final_price": 800}}, "CalculateFinalPrice")
         assert ctx.state["fsm_state"] == "FinalPricing"
 
     def test_confirmed_advances(self):
@@ -492,7 +504,8 @@ class TestFsmAdvanceTool:
             ("DeviceTradeInChecks",         {"trade_in_context": {"final_condition": "Good"}},    "TradeInPricing"),
             ("TradeInPricing",              {"trade_in_context": {"quote_value": 200}},           "NewUpgradeDeviceSelection"),
             ("NewUpgradeDeviceSelection",   {"new_device_context": {"selection": "iPhone 16"}},   "NewUpgradeDevicePricing"),
-            ("NewUpgradeDevicePricing",     {"new_device_context": {"price": 1000}},              "FinalPricing"),
+            ("NewUpgradeDevicePricing",     {"new_device_context": {"price": 1000}},              "CalculateFinalPrice"),
+            ("CalculateFinalPrice",         {"order_context": {"final_price": 800}},              "FinalPricing"),
             ("FinalPricing",                {"order_context": {"user_confirmed": True}},           "ProcessOrder"),
             ("ProcessOrder",                {"order_context": {"order_id": "ORD-999888777"}},     "EndSuccess"),
         ]
@@ -523,7 +536,8 @@ class TestHappyPathEndToEnd:
             ("DeviceTradeInChecks",        {"trade_in_context": {"final_condition": "Good"}},     "TradeInPricing"),
             ("TradeInPricing",             {"trade_in_context": {"quote_value": 200}},            "NewUpgradeDeviceSelection"),
             ("NewUpgradeDeviceSelection",  {"new_device_context": {"selection": "iPhone 16"}},   "NewUpgradeDevicePricing"),
-            ("NewUpgradeDevicePricing",    {"new_device_context": {"price": 1000}},               "FinalPricing"),
+            ("NewUpgradeDevicePricing",    {"new_device_context": {"price": 1000}},               "CalculateFinalPrice"),
+            ("CalculateFinalPrice",        {"order_context": {"final_price": 800}},               "FinalPricing"),
             ("FinalPricing",               {"order_context": {"user_confirmed": True}},           "ProcessOrder"),
             ("ProcessOrder",               {"order_context": {"order_id": "ORD-999888777"}},      "EndSuccess"),
         ]
@@ -547,7 +561,8 @@ class TestHappyPathEndToEnd:
             ("CheckLineUpgradeEligibility",{"line_context": {"is_eligible": True}},              "VerifyTradeIn"),
             ("VerifyTradeIn",              {"trade_in_context": {"wants_trade_in": False}},      "NewUpgradeDeviceSelection"),
             ("NewUpgradeDeviceSelection",  {"new_device_context": {"selection": "iPhone 16"}},  "NewUpgradeDevicePricing"),
-            ("NewUpgradeDevicePricing",    {"new_device_context": {"price": 1000}},              "FinalPricing"),
+            ("NewUpgradeDevicePricing",    {"new_device_context": {"price": 1000}},              "CalculateFinalPrice"),
+            ("CalculateFinalPrice",        {"order_context": {"final_price": 1000}},             "FinalPricing"),
             ("FinalPricing",               {"order_context": {"user_confirmed": True}},          "ProcessOrder"),
             ("ProcessOrder",               {"order_context": {"order_id": "ORD-999888777"}},     "EndSuccess"),
         ]

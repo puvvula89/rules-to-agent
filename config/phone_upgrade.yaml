@@ -38,10 +38,13 @@ states:
     objective: "Get the pricing for the selected new device using the catalog tool."
     extract_variables: ["new_device_context.price"]
 
+  - name: CalculateFinalPrice
+    objective: "Calculate the final price using the calculate_final_price tool, passing new_device_price and trade_in_quote (0 if no trade-in)."
+    extract_variables: ["order_context.final_price"]
+
   - name: FinalPricing
-    objective: "Calculate final price (New Device Price - Trade In Quote) and present the summary to the user."
+    objective: "Present the pricing summary to the user (new device, trade-in credit, final price) and ask for their confirmation."
     extract_variables: ["order_context.user_confirmed"]
-    next_action: ASK_USER
 
   - name: ProcessOrder
     objective: "Submit the final transaction using the submit_order tool and confirm success with the user."
@@ -154,8 +157,13 @@ transitions:
 
   - trigger: advance
     source: NewUpgradeDevicePricing
-    dest: FinalPricing
+    dest: CalculateFinalPrice
     condition_string: "context['new_device_context'].get('price', -1) > 0"
+
+  - trigger: advance
+    source: CalculateFinalPrice
+    dest: FinalPricing
+    condition_string: "context['order_context'].get('final_price') is not None"
 
   - trigger: advance
     source: FinalPricing

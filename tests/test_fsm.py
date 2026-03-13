@@ -98,7 +98,12 @@ def test_device_selected_advances(fsm):
 
 def test_device_priced_advances(fsm):
     ledger = _ledger(new_device_context={"price": 1000})
-    assert fsm.evaluate("NewUpgradeDevicePricing", ledger) == "FinalPricing"
+    assert fsm.evaluate("NewUpgradeDevicePricing", ledger) == "CalculateFinalPrice"
+
+
+def test_final_price_calculated_advances(fsm):
+    ledger = _ledger(order_context={"final_price": 800})
+    assert fsm.evaluate("CalculateFinalPrice", ledger) == "FinalPricing"
 
 
 def test_confirmed_advances(fsm):

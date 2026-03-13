@@ -71,6 +71,12 @@ def select_device(device_model: str) -> dict:
 
 
 @mcp.tool()
+def calculate_final_price(new_device_price: float, trade_in_quote: float = 0.0) -> dict:
+    """Calculate the final price the customer pays: new device price minus any trade-in credit."""
+    return {"final_price": new_device_price - trade_in_quote}
+
+
+@mcp.tool()
 def confirm_order() -> dict:
     """Confirm the user wants to proceed with the order."""
     return {"user_confirmed": True}

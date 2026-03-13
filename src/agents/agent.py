@@ -121,7 +121,7 @@ def fsm_advance(data: dict, tool_context: ToolContext) -> dict:
     logger.info(f"[FSM] {current_state} → {new_state} | data: {data}")
 
     fields = fsm.get_extract_variables(new_state)
-    next_action = "ASK_USER" if (fsm.is_terminal(new_state) or not fields or fsm.requires_user_input(new_state)) else "CONTINUE"
+    next_action = "ASK_USER" if (fsm.is_terminal(new_state) or not fields) else "CONTINUE"
 
     return {
         "workflow_advanced_to": new_state,
@@ -183,6 +183,7 @@ _TOOL_CONTRACT = (
     '- After every MCP tool call, immediately call `fsm_advance`. No exceptions.\n'
     '  Pattern: MCP tool → `fsm_advance` → MCP tool → `fsm_advance`\n'
     '- Ending a turn with an MCP tool as the last call is an error.\n'
+    '- Only call `fsm_advance` after an MCP tool call. Never call it with data you computed or inferred yourself.\n'
     '- `detect_intent` handles FSM advancement internally — do NOT call `fsm_advance` after it.\n\n'
 )
 
