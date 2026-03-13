@@ -1,3 +1,19 @@
+"What you're looking at is the end of the legacy rules engine.                                                                             
+   
+  On the right — a YAML file. This is where every business rule in this phone upgrade workflow lives. States, conditions, transitions,       
+  change-of-mind scenarios. All of it.                                                                                                     
+
+  On the left — a live AI agent, powered by Gemini, walking a customer through that workflow in real time.
+
+  Here's what makes this different: the AI cannot hallucinate its way through this process. Every state transition you see happen — eligible,
+   not eligible, trade-in approved, order placed — is controlled by that YAML. Not the LLM. The LLM talks to the customer. The FSM decides
+  what happens next.
+
+  And here's the real story: if a business rule changes tomorrow — a new eligibility condition, a new step in the flow, a new change-of-mind
+  scenario — you edit the YAML. That's it. No Python. No redeployment. No engineer in the loop.
+
+  That's what we built. Let me show you."**
+
 # High-Level Design: Agentic Rules Engine
 
 ## 1. The Problem
